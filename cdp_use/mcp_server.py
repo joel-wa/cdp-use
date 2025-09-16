@@ -15,8 +15,9 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import httpx
 from mcp.server import Server
-from mcp.types import Resource, Tool
+from mcp.types import Resource, Tool, ServerCapabilities
 from mcp.server.stdio import stdio_server
+from mcp.server.models import InitializationOptions
 
 from cdp_use.client import CDPClient
 
@@ -449,9 +450,9 @@ class BrowserMCPServer:
                 InitializationOptions(
                     server_name="cdp-browser-control",
                     server_version="1.0.0",
-                    capabilities=self.server.get_capabilities(
-                        notification_options=None,
-                        experimental_capabilities={}
+                    capabilities=ServerCapabilities(
+                        tools={},
+                        resources={}
                     )
                 )
             )
