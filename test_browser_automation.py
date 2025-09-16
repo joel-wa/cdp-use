@@ -11,7 +11,7 @@ async def test_browser_automation():
     """Test browser automation with FastMCP"""
     
     # Set up environment for FastMCP server
-    os.environ["MCP_SERVER_COMMAND"] = f'"{sys.executable}" "C:\\Users\\RanVic\\cdp-use\\fastmcp_browser_server.py"'
+    os.environ["MCP_SERVER_COMMAND"] = f'"{sys.executable}" "C:\\Users\\RanVic\\cdp-use\\examples\\mcp_browser_control.py" --server-only'
     
     print(f"🌐 Testing browser automation with FastMCP...")
     

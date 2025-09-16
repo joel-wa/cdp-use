@@ -41,7 +41,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://127.0.0.1:12306/mcp")
 MCP_SERVER_COMMAND = os.getenv("MCP_SERVER_COMMAND", "")  # Command to run stdio MCP server
-MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "auto")  # "http", "stdio", or "auto"
+MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio")  # "http", "stdio", or "auto"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 # Setup logging
