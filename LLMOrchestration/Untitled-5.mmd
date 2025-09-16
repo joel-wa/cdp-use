@@ -1,0 +1,48 @@
+---
+id: 63f68dec-6c65-4a3a-8d3f-7baa1b84166a
+---
+flowchart TD
+    A[User Enters Goal] --> B[GeminiMCPOrchestrator.run_goal]
+    B --> C[Start Orchestration Loop]
+    C --> D[Execute Planner Role]
+    
+    D --> E{Gemini API Call<br/>_generate_content}
+    E --> F{Response Processing}
+    
+    F --> G{Has Candidates?}
+    G -->|No| H[Log Warning: No candidates]
+    G -->|Yes| I{Has Content Parts?}
+    
+    I -->|No| J[Log Warning: No content parts]
+    I -->|Yes| K[Extract Text from Parts]
+    
+    K --> L{JSON Parsing}
+    L -->|Success| M[Return Structured Response]
+    L -->|Fail| N[JSON Parse Error]
+    
+    H --> O[Create Fallback Response]
+    J --> O
+    N --> O
+    
+    O --> P{Role Type?}
+    P -->|Planner| Q[Return: FALLBACK planning failed]
+    P -->|Executor| R[Return: FALLBACK execution failed]
+    P -->|Critic| S[Return: FALLBACK analysis failed]
+    P -->|Reviewer| T[Return: FALLBACK review failed]
+    
+    Q --> U[Web UI Shows Fallback Text]
+    R --> U
+    S --> U
+    T --> U
+    
+    M --> V[Continue to Next Role]
+    V --> W[Execute Executor Role]
+    W --> E
+    
+    style O fill:#ff9999
+    style P fill:#ff9999
+    style Q fill:#ff9999
+    style R fill:#ff9999
+    style S fill:#ff9999
+    style T fill:#ff9999
+    style U fill:#ff9999

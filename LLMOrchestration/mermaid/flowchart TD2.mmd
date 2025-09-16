@@ -1,0 +1,18 @@
+flowchart TD
+    A[Gemini MCP Client] --> B[Direct genai_client.models.generate_content]
+    B --> C[Process response.candidates]
+    C --> D[Handle function_call in parts]
+    D --> E[Execute tools via MCP session]
+    
+    F[Gemini MCP Orchestrator] --> G[Uses OrchestratorLLM wrapper]
+    G --> H[Streaming with generate_content_stream]
+    H --> I[Complex JSON schema handling]
+    I --> J[Broken function call handling]
+    
+    A -.->|Working| K[Successful Tool Execution]
+    F -.->|Broken| L[Failed Tool Execution]
+    
+    M[Fix Strategy] --> N[Replace OrchestratorLLM with direct genai_client]
+    N --> O[Use non-streaming generate_content]
+    O --> P[Copy function_call handling from client]
+    P --> Q[Simplify JSON response parsing]

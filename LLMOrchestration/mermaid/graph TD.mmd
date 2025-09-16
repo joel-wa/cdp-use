@@ -1,0 +1,46 @@
+graph TD
+    A[User Goal] --> B{Contains Visual Request?}
+    
+    B -->|No| C[Standard Planner]
+    B -->|Yes| D[Visual-Aware Planner]
+    
+    C --> E[Standard Executor]
+    D --> F[Enhanced Executor with Screenshot]
+    
+    E --> G{Tool Success?}
+    F --> H{Screenshot + Tool Success?}
+    
+    G -->|Yes| I[Standard Critic]
+    G -->|No| J[Error Handling]
+    
+    H -->|Yes| K[Visual-Enhanced Critic]
+    H -->|No| L[Screenshot Retry Logic]
+    
+    I --> M[Standard Reviewer]
+    K --> N[Visual-Enhanced Reviewer]
+    J --> O[Error Recovery]
+    L --> P[Alternative Approach]
+    
+    M --> Q{Goal Achieved?}
+    N --> R{Visual Goal Achieved?}
+    O --> S[Retry with Different Strategy]
+    P --> T[Fallback to Text-Only]
+    
+    Q -->|No| C
+    Q -->|Yes| U[Success - Text Analysis]
+    
+    R -->|No| D
+    R -->|Yes| V[Success - Visual Analysis]
+    
+    S --> C
+    T --> C
+    
+    subgraph "Screenshot Integration"
+        W[Take Screenshot] --> X[Upload to Gemini Files API]
+        X --> Y[Analyze with Gemini Vision]
+        Y --> Z[Extract Visual Context]
+        Z --> AA[Merge with Tool Results]
+    end
+    
+    F --> W
+    K --> W
