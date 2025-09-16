@@ -27,8 +27,13 @@ uv sync
 python start_browser_mcp.py
 ```
 
+
 **That's it!** 🎉 Your browser automation server is running!
 
+### 3. **Run this script to interact with it**
+``` bash
+python simple_conversational_orchestrator.py
+```
 ---
 
 ## 🛠️ What You Get
