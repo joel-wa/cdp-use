@@ -44,7 +44,7 @@ def start_chrome_debug():
         cmd = [
             chrome_path,
             "--remote-debugging-port=9222",
-            "--user-data-dir=C:\\temp\\chrome_mcp_debug",
+            "--user-data-dir=C:\\Users\\RanVic\\AppData\\Local\\Google\\Chrome\\User Data\\System Profile",
             "--no-first-run",
             "--no-default-browser-check"
         ]
