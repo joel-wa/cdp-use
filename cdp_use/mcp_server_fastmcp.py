@@ -12,10 +12,34 @@ import json
 import sys
 import urllib.request
 import urllib.error
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
 
 from mcp.server import FastMCP
 from cdp_use.client import CDPClient
+
+@dataclass
+class DOMRect:
+    """Represents a DOM element's bounding rectangle"""
+    x: float
+    y: float
+    width: float
+    height: float
+
+@dataclass
+class EnhancedAXNode:
+    """Represents accessibility information for a DOM element"""
+    name: Optional[str] = None
+
+@dataclass
+class EnhancedDOMTreeNode:
+    """Represents an enhanced DOM tree node with additional metadata"""
+    element_index: int
+    tag_name: str
+    attributes: Dict[str, str]
+    absolute_position: DOMRect
+    ax_node: EnhancedAXNode
+    text: str
 
 class BrowserFastMCPServer:
     """FastMCP Server for browser control using CDP"""
@@ -23,6 +47,7 @@ class BrowserFastMCPServer:
     def __init__(self):
         self.server = FastMCP("CDP Browser Control Server")
         self.cdp_client = None
+        self.selector_map: Dict[int, EnhancedDOMTreeNode] = {}
         self._setup_tools()
     
     def _setup_tools(self):
@@ -423,6 +448,316 @@ class BrowserFastMCPServer:
                 
             except Exception as e:
                 return f"Error waiting for element {selector}: {str(e)}"
+        
+        @self.server.tool()
+        async def get_interactive_elements(show_visual: bool = True, color: str = "rgba(255,0,0,0.25)") -> Dict[str, Any]:
+            """Get a list of all interactive elements on the page and optionally show visual indicators.
+            Use this tool when you need to interact and take some actions on a web page easily.
+            
+            Args:
+                show_visual: Whether to show visual bounding boxes around elements (default: True)
+                color: Color for the visual indicators (default: red with transparency)
+            """
+            try:
+                if not self.cdp_client:
+                    await self._connect_to_browser()
+                
+                # Update the selector map
+                await self.update_selector_map()
+                
+                # Optionally show visual indicators
+                if show_visual:
+                    await self.show_bounding_boxes(color=color, label=True)
+                
+                # Format the results for return
+                elements = []
+                for idx, node in self.selector_map.items():
+                    elements.append({
+                        "index": node.element_index,
+                        "tag": node.tag_name,
+                        "text": node.text[:100] + "..." if len(node.text) > 100 else node.text,
+                        "attributes": node.attributes,
+                        "position": {
+                            "x": node.absolute_position.x,
+                            "y": node.absolute_position.y,
+                            "width": node.absolute_position.width,
+                            "height": node.absolute_position.height
+                        },
+                        "accessibility": {
+                            "name": node.ax_node.name
+                        }
+                    })
+                
+                return {
+                    "total_elements": len(elements),
+                    "elements": elements,
+                    "visual_indicators_shown": show_visual
+                }
+                
+            except Exception as e:
+                return {"error": f"Error getting interactive elements: {str(e)}"}
+        
+        @self.server.tool()
+        async def click_element_by_index(element_index: int) -> str:
+            """Click an element using its index from the interactive elements map
+            
+            Args:
+                element_index: The index of the element to click (from get_interactive_elements)
+            """
+            try:
+                if not self.cdp_client:
+                    await self._connect_to_browser()
+                
+                # Make sure we have the latest selector map
+                if not self.selector_map:
+                    await self.update_selector_map()
+                
+                # Find the element
+                if element_index not in self.selector_map:
+                    return f"Element index {element_index} not found. Use get_interactive_elements to see available indices."
+                
+                node = self.selector_map[element_index]
+                
+                # Calculate center of the element for clicking
+                x = node.absolute_position.x + (node.absolute_position.width / 2)
+                y = node.absolute_position.y + (node.absolute_position.height / 2)
+                
+                # Click the element
+                await self.cdp_client.send.Input.dispatchMouseEvent({
+                    'type': 'mousePressed',
+                    'x': x,
+                    'y': y,
+                    'button': 'left',
+                    'clickCount': 1
+                })
+                
+                await self.cdp_client.send.Input.dispatchMouseEvent({
+                    'type': 'mouseReleased',
+                    'x': x,
+                    'y': y,
+                    'button': 'left',
+                    'clickCount': 1
+                })
+                
+                return f"Successfully clicked element {element_index}: {node.tag_name} '{node.text[:50]}'"
+                
+            except Exception as e:
+                return f"Error clicking element {element_index}: {str(e)}"
+        
+        @self.server.tool()
+        async def hide_visual_indicators() -> str:
+            """Hide the visual indicators (bounding boxes) from the page"""
+            try:
+                if not self.cdp_client:
+                    await self._connect_to_browser()
+                
+                # JavaScript to remove the overlay
+                js = r"""
+                (() => {
+                    const overlay = document.getElementById('__ps_overlay_v1');
+                    if (overlay) {
+                        overlay.remove();
+                        return true;
+                    }
+                    return false;
+                })()
+                """
+                
+                result = await self.cdp_client.send.Runtime.evaluate({
+                    'expression': js,
+                    'returnByValue': True
+                })
+                
+                if result.get('exceptionDetails'):
+                    return f"Error hiding visual indicators: {result['exceptionDetails']['text']}"
+                
+                removed = result.get('result', {}).get('value', False)
+                return "Visual indicators hidden" if removed else "No visual indicators found to hide"
+                
+            except Exception as e:
+                return f"Error hiding visual indicators: {str(e)}"
+    
+    async def update_selector_map(self):
+        """Evaluate a script in the page that finds interactive elements and builds selector_map."""
+        if not self.cdp_client:
+            await self._connect_to_browser()
+
+        js = r"""
+        (() => {
+            // Collect potential interactive elements in document order
+            const nodes = [];
+            const walker = document.createTreeWalker(document, NodeFilter.SHOW_ELEMENT, null, false);
+            let node;
+            let idx = 1;
+            const interactiveRoles = new Set(['button','link','menuitem','option','radio','checkbox','tab','textbox']);
+            while (node = walker.nextNode()) {
+                try {
+                    const tag = node.tagName.toLowerCase();
+                    const attrs = {};
+                    for (let i=0;i<node.attributes.length;i++){
+                        const a = node.attributes[i];
+                        attrs[a.name] = a.value;
+                    }
+                    const rect = node.getBoundingClientRect ? node.getBoundingClientRect() : { x: 0, y: 0, width: 0, height: 0 };
+                    const hasOnclick = node.getAttribute && (node.getAttribute('onclick') !== null || typeof node.onclick === 'function');
+                    const role = node.getAttribute ? node.getAttribute('role') : null;
+                    const ariaLabel = node.getAttribute ? (node.getAttribute('aria-label') || node.getAttribute('aria-labelledby') || null) : null;
+                    const tabIndex = node.tabIndex || -1;
+                    const isInteractiveTag = ['a','button','input','select','textarea'].includes(tag);
+                    const maybeInteractive = isInteractiveTag || hasOnclick || tabIndex >= 0 || (role && interactiveRoles.has(role));
+                    if (!maybeInteractive) continue;
+                    const text = (node.innerText || '').trim().slice(0, 500);
+                    nodes.push({
+                        index: idx++,
+                        tag,
+                        attrs,
+                        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                        role,
+                        ariaLabel,
+                        text
+                    });
+                } catch (e) {
+                    // ignore node traversal errors
+                }
+            }
+            return nodes;
+        })()
+        """
+
+        result = await self.cdp_client.send.Runtime.evaluate({
+            'expression': js,
+            'returnByValue': True
+        })
+        
+        if result.get('exceptionDetails'):
+            raise Exception(f"Error evaluating selector map script: {result['exceptionDetails']['text']}")
+        
+        items = result.get('result', {}).get('value', [])
+        
+        # rebuild selector_map
+        new_map: Dict[int, EnhancedDOMTreeNode] = {}
+        for it in items:
+            rect = it.get("rect") or {}
+            domrect = DOMRect(x=rect.get("x", 0), y=rect.get("y", 0), width=rect.get("width", 0), height=rect.get("height", 0))
+            ax = EnhancedAXNode(name=it.get("ariaLabel") or it.get("role") or None)
+            node = EnhancedDOMTreeNode(
+                element_index=int(it["index"]),
+                tag_name=it.get("tag", ""),
+                attributes=it.get("attrs", {}),
+                absolute_position=domrect,
+                ax_node=ax,
+                text=it.get("text", ""),
+            )
+            new_map[node.element_index] = node
+
+        # replace existing map atomically
+        self.selector_map = new_map
+
+    async def show_bounding_boxes(self, indices: Optional[List[int]] = None, color: str = "rgba(255,0,0,0.25)", label: bool = True):
+        """
+        Render bounding boxes for elements in selector_map.
+        - indices: optional list of element_index values to render; if None, render all.
+        - color: CSS color for the fill (use rgba for transparency).
+        - label: show small label with index/tag.
+        """
+        if not self.cdp_client:
+            await self._connect_to_browser()
+
+        # build serializable list of rects from selector_map
+        items = []
+        for idx, node in self.selector_map.items():
+            if indices and idx not in indices:
+                continue
+            if not node.absolute_position:
+                continue
+            r = node.absolute_position
+            items.append({
+                "index": idx,
+                "x": r.x,
+                "y": r.y,
+                "width": r.width,
+                "height": r.height,
+                "tag": node.tag_name,
+                "text": (node.text or "")[:80],
+            })
+
+        js = r"""
+        (args) => {
+            try {
+                const items = args.items || [];
+                const color = args.color || "rgba(255,0,0,0.25)";
+                const doLabel = !!args.doLabel;
+                const ID = "__ps_overlay_v1";
+                let root = document.getElementById(ID);
+                if (!root) {
+                    root = document.createElement("div");
+                    root.id = ID;
+                    Object.assign(root.style, {
+                        position: "fixed",
+                        left: "0px",
+                        top: "0px",
+                        width: "100%",
+                        height: "100%",
+                        pointerEvents: "none",
+                        zIndex: 2147483647, // very top
+                    });
+                    document.documentElement.appendChild(root);
+                } else {
+                    // clear previous boxes
+                    root.innerHTML = "";
+                }
+
+                items.forEach(it => {
+                    const box = document.createElement("div");
+                    Object.assign(box.style, {
+                        position: "fixed", // rect.x/y are viewport coordinates
+                        left: (Math.round(it.x) + "px"),
+                        top: (Math.round(it.y) + "px"),
+                        width: Math.max(0, Math.round(it.width)) + "px",
+                        height: Math.max(0, Math.round(it.height)) + "px",
+                        background: color,
+                        outline: "2px solid rgba(0,0,0,0.5)",
+                        boxSizing: "border-box",
+                        pointerEvents: "none",
+                    });
+                    box.dataset.psIndex = String(it.index);
+                    root.appendChild(box);
+
+                    if (doLabel) {
+                        const lbl = document.createElement("div");
+                        lbl.textContent = `${it.index} ${it.tag}`;
+                        Object.assign(lbl.style, {
+                            position: "absolute",
+                            left: "0px",
+                            top: "-18px",
+                            fontSize: "12px",
+                            lineHeight: "14px",
+                            padding: "2px 6px",
+                            background: "rgba(0,0,0,0.65)",
+                            color: "#fff",
+                            borderRadius: "3px",
+                            pointerEvents: "none",
+                            whiteSpace: "nowrap",
+                        });
+                        box.appendChild(lbl);
+                    }
+                });
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+        """
+        # Execute the JavaScript with arguments
+        result = await self.cdp_client.send.Runtime.evaluate({
+            'expression': f'({js})({{items: {json.dumps(items)}, color: {json.dumps(color)}, doLabel: {json.dumps(label)}}})',
+            'returnByValue': True
+        })
+        
+        if result.get('exceptionDetails'):
+            raise Exception(f"Error showing bounding boxes: {result['exceptionDetails']['text']}")
+        
+        return result.get('result', {}).get('value', False)
     
     async def _connect_to_browser(self):
         """Connect to Chrome browser"""
