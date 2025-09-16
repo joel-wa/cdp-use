@@ -185,21 +185,195 @@ class BrowserFastMCPServer:
                 return f"Error executing JavaScript: {str(e)}"
         
         @self.server.tool()
-        async def get_page_content() -> str:
-            """Get the current page's HTML content"""
+        async def get_page_content(selector: str = None, human_readable: bool = True) -> str:
+            """Get the current page's content
+            
+            Args:
+                selector: Optional CSS selector to get content of specific element
+                human_readable: If True, returns only clean readable text visible to users (default: True)
+            """
             try:
                 if not self.cdp_client:
                     await self._connect_to_browser()
                 
-                # Get the document
-                doc_result = await self.cdp_client.send.DOM.getDocument()
-                
-                # Get outer HTML of the document
-                html_result = await self.cdp_client.send.DOM.getOuterHTML({
-                    'nodeId': doc_result['root']['nodeId']
+                if selector:
+                    # Get specific element content
+                    expression = f"document.querySelector('{selector}') ? document.querySelector('{selector}').outerHTML : null"
+                elif human_readable:
+                    # Extract only pure human-readable content
+                    expression = r"""
+                        (() => {
+                            // Function to get clean text from an element, handling cases like buttons, forms, etc.
+                            function getCleanText(element) {
+                                // Skip hidden elements
+                                const style = window.getComputedStyle(element);
+                                if (style.display === 'none' || style.visibility === 'hidden' ||
+                                    style.opacity === '0' || element.offsetParent === null) {
+                                    return '';
+                                }
+
+                                // Skip elements likely to be invisible or noise
+                                if (element.getAttribute('aria-hidden') === 'true' ||
+                                    element.getAttribute('role') === 'presentation' ||
+                                    element.id === 'comment-section' ||
+                                    (element.classList && element.classList.contains && (element.classList.contains('ad') ||
+                                    element.classList.contains('menu') ||
+                                    element.classList.contains('cookie') ||
+                                    element.classList.contains('navigation')))) {
+                                    return '';
+                                }
+
+                                // Get direct text from this element (excluding child element text)
+                                let text = '';
+                                for (const node of element.childNodes) {
+                                    if (node.nodeType === Node.TEXT_NODE) {
+                                        text += node.textContent;
+                                    }
+                                }
+
+                                // Trim the direct text
+                                text = text.trim();
+
+                                // Determine if this is a heading element to add structure
+                                const nodeName = element.nodeName.toLowerCase();
+                                if (/^h[1-6]$/.test(nodeName)) {
+                                    if (text) {
+                                        const level = parseInt(nodeName.charAt(1));
+                                        return '\\n' + '#'.repeat(level) + ' ' + text + '\\n';
+                                    }
+                                }
+
+                                return text;
+                            }
+
+                            // Walk the DOM, skipping unwanted elements
+                            function walkDOM(root, result = '') {
+                                // Skip script, style, noscript, etc.
+                                const skipTags = ['script', 'style', 'noscript', 'template', 'iframe'];
+                                if (skipTags.includes(root.nodeName.toLowerCase())) {
+                                    return result;
+                                }
+
+                                // Skip elements typically used for navigation, ads, popups
+                                const skipRoles = ['navigation', 'banner', 'complementary', 'contentinfo'];
+                                if (skipRoles.includes(root.getAttribute('role'))) {
+                                    return result;
+                                }
+
+                                // Skip common non-content elements
+                                const skipClasses = ['header', 'footer', 'sidebar', 'nav', 'menu', 'ad', 'popup', 'modal', 'cookie'];
+                                for (const cls of skipClasses) {
+                                    if (root.className && typeof root.className === 'string' &&
+                                        (root.className.includes(cls) || (root.id && root.id.includes && root.id.includes(cls)))) {
+                                        return result;
+                                    }
+                                }
+
+                                // Get the element's own text content (not including children)
+                                const directText = getCleanText(root);
+                                if (directText) {
+                                    result += directText + ' ';
+                                }
+
+                                // Recursively process child elements
+                                for (const child of root.children) {
+                                    result = walkDOM(child, result);
+
+                                    // Add separators between block elements
+                                    const childName = child.nodeName.toLowerCase();
+                                    if (['div', 'p', 'section', 'article', 'header', 'li', 'tr'].includes(childName)) {
+                                        result += '\\n';
+                                    }
+                                }
+
+                                return result;
+                            }
+
+                            // Start with the main content element if possible
+                            const mainContent = document.querySelector('main') ||
+                                                document.querySelector('article') ||
+                                                document.querySelector('#content') ||
+                                                document.querySelector('.content') ||
+                                                document.body;
+
+                            // Get page title
+                            let result = '';
+                            const title = document.querySelector('h1') || document.querySelector('h2');
+                            if (title && title.textContent.trim()) {
+                                result += title.textContent.trim() + '\\n\\n';
+                            } else if (document.title) {
+                                result += document.title + '\\n\\n';
+                            }
+
+                            // Walk the DOM to get clean text
+                            result += walkDOM(mainContent);
+
+                            // Clean up the text
+                            return result
+                                .replace(/\\s+/g, ' ')         // Collapse whitespace
+                                .replace(/\\n\\s+/g, '\\n')    // Remove leading space after newlines
+                                .replace(/\\n{3,}/g, '\\n\\n') // Replace multiple newlines
+                                .replace(/\\s+$/gm, '')        // Remove trailing space from each line
+                                .replace(/[\u200f\u200b\ufeff\u202f\u200d\u00ad\u034f\u061c\u180e\u2000-\u200f\u2028-\u202f\u205f-\u206f\ufeff]/g, '') // Remove invisible Unicode characters
+                                .replace(/͏/g, '')             // Remove invisible separator
+                                .trim();                       // Trim the final result
+                        })()
+                    """
+                else:
+                    # Extract full content with structured data
+                    expression = r"""
+                        (() => {
+                            // Remove unwanted elements that might contain noise
+                            const elementsToRemove = [
+                                'header', 'footer', 'nav', 'aside',
+                                '.ads', '.advertisement', '.cookie-notice',
+                                '.popup', '.modal', '.newsletter'
+                            ];
+
+                            // Create a copy to avoid modifying the actual DOM
+                            const docClone = document.cloneNode(true);
+
+                            elementsToRemove.forEach(selector => {
+                                docClone.querySelectorAll(selector).forEach(el => {
+                                    if (el) el.remove();
+                                });
+                            });
+
+                            // Get the main content
+                            const mainContent = docClone.querySelector('main') ||
+                                               docClone.querySelector('article') ||
+                                               docClone.querySelector('.content') ||
+                                               docClone.body;
+
+                            return JSON.stringify({
+                                title: document.title,
+                                url: window.location.href,
+                                text: mainContent ? mainContent.innerText : docClone.body.innerText,
+                                html: mainContent ? mainContent.innerHTML : docClone.body.innerHTML
+                            });
+                        })()
+                    """
+
+                # Execute the JavaScript to get content
+                result = await self.cdp_client.send.Runtime.evaluate({
+                    'expression': expression,
+                    'returnByValue': True
                 })
                 
-                return html_result['outerHTML']
+                if result.get('exceptionDetails'):
+                    return f"Error getting content: {result['exceptionDetails']['text']}"
+                
+                content = result.get('result', {}).get('value')
+                
+                if content is None and selector:
+                    return f"Element not found with selector: {selector}"
+                
+                if human_readable or selector:
+                    # Return the content directly
+                    return content or "No content found"
+                else:
+                    # Return structured content (it's already JSON stringified)
+                    return content or "No content found"
                 
             except Exception as e:
                 return f"Error getting page content: {str(e)}"
