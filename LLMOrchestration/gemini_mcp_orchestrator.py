@@ -30,9 +30,8 @@ from dotenv import load_dotenv
 # Import MCP components
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
-from mcp.client.stdio import stdio_client
+from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp import Tool
-import subprocess
 
 # Load environment variables
 load_dotenv()
@@ -863,19 +862,35 @@ class GeminiMCPOrchestrator:
         # Parse the command (handle both string and list formats)
         if isinstance(MCP_SERVER_COMMAND, str):
             # Split command string into list
-            import shlex
             cmd_parts = shlex.split(MCP_SERVER_COMMAND)
         else:
             cmd_parts = MCP_SERVER_COMMAND
             
+        # Extract command and arguments
+        if cmd_parts:
+            command = cmd_parts[0]
+            args = cmd_parts[1:] if len(cmd_parts) > 1 else []
+        else:
+            raise ValueError("Empty MCP_SERVER_COMMAND")
+            
+        # Create StdioServerParameters
+        server_params = StdioServerParameters(
+            command=command,
+            args=args
+        )
+        
         # Start the MCP server process
-        server_process = await self.exit_stack.enter_async_context(
-            stdio_client(cmd_parts)
+        logger.debug(f"Starting MCP server with params: command={command}, args={args}")
+        server_transport = await self.exit_stack.enter_async_context(
+            stdio_client(server_params)
         )
         
         # stdio_client returns (read, write)
-        read, write = server_process
+        read, write = server_transport
+        logger.debug("Got stdio transport streams, creating ClientSession")
         self.mcp_session = await self.exit_stack.enter_async_context(ClientSession(read, write))
+        
+        logger.debug("Initializing MCP session...")
         await self.mcp_session.initialize()
         logger.info(f"Successfully connected to MCP stdio server")
         
@@ -960,7 +975,12 @@ class GeminiMCPOrchestrator:
         print("🎯 Enter goals to execute using the enhanced web browsing orchestration system.")
         print("🔄 Workflow: Planner (Single Action) → Executor (Tool Call) → Critic → Reviewer")
         print(f"📡 MCP Server: {'Connected' if self.mcp_session else 'Not connected'}")
-        print(f"🔧 Available tools: {len(self.available_tools)}")
+        print(f"� Transport: {MCP_TRANSPORT}")
+        if self.mcp_session and MCP_SERVER_COMMAND:
+            print(f"📋 Using stdio command: {MCP_SERVER_COMMAND}")
+        elif self.mcp_session and MCP_SERVER_URL:
+            print(f"🌐 Using HTTP URL: {MCP_SERVER_URL}")
+        print(f"�🔧 Available tools: {len(self.available_tools)}")
         
         if self.available_tools:
             print("\nAvailable MCP tools for web browsing:")

@@ -157,13 +157,13 @@ For AI Agents:
             # Wait a moment for Chrome to start
             await asyncio.sleep(2)
     
-    print("\n🚀 Starting MCP Browser Control Server...")
-    print("📡 Server will communicate via stdin/stdout")
-    print("🔧 Available tools: navigate, click_element, type_text, take_screenshot, execute_javascript, get_page_content, wait_for_element")
-    print("📊 Available resources: browser://current-page, browser://page-source")
-    print("\n" + "="*50)
-    print("Server is ready for MCP client connections!")
-    print("="*50)
+    print("\n🚀 Starting MCP Browser Control Server...", file=sys.stderr)
+    print("📡 Server will communicate via stdin/stdout", file=sys.stderr)
+    print("🔧 Available tools: navigate, click_element, type_text, take_screenshot, execute_javascript, get_page_content, wait_for_element", file=sys.stderr)
+    print("📊 Available resources: browser://current-page, browser://page-source", file=sys.stderr)
+    print("\n" + "="*50, file=sys.stderr)
+    print("Server is ready for MCP client connections!", file=sys.stderr)
+    print("="*50, file=sys.stderr)
     
     try:
         # Import and start the MCP server
@@ -173,15 +173,15 @@ For AI Agents:
         await server.serve()
         
     except KeyboardInterrupt:
-        print("\n🛑 Server stopped by user")
+        print("\n🛑 Server stopped by user", file=sys.stderr)
     except Exception as e:
-        print(f"\n❌ Server error: {e}")
+        print(f"\n❌ Server error: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
     finally:
         # Clean up Chrome process
         if chrome_process:
-            print("🧹 Cleaning up Chrome process...")
+            print("🧹 Cleaning up Chrome process...", file=sys.stderr)
             chrome_process.terminate()
             chrome_process.wait()
 

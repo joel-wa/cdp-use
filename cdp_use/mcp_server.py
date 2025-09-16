@@ -17,7 +17,7 @@ import httpx
 from mcp.server import Server
 from mcp.types import Resource, Tool, ServerCapabilities
 from mcp.server.stdio import stdio_server
-from mcp.server.models import InitializationOptions
+from mcp.server import InitializationOptions
 
 from cdp_use.client import CDPClient
 
@@ -436,7 +436,7 @@ class BrowserMCPServer:
             )
             self.session_id = attach_result["sessionId"]
             
-            logger.info(f"Connected to browser, session ID: {self.session_id}")
+            print(f"Connected to browser, session ID: {self.session_id}", file=sys.stderr)
             
         except Exception as e:
             logger.error(f"Failed to connect to browser: {e}")
@@ -445,17 +445,13 @@ class BrowserMCPServer:
     async def serve(self):
         """Start the MCP server"""
         async with stdio_server() as streams:
-            await self.server.run(
-                streams[0], streams[1], 
-                InitializationOptions(
-                    server_name="cdp-browser-control",
-                    server_version="1.0.0",
-                    capabilities=ServerCapabilities(
-                        tools={},
-                        resources={}
-                    )
-                )
+            # Create initialization options
+            init_options = InitializationOptions(
+                server_name="CDP Browser Control Server",
+                server_version="1.0.0", 
+                capabilities=self.server.get_capabilities()
             )
+            await self.server.run(streams[0], streams[1], init_options)
 
 # Tool definitions for the MCP server
 TOOLS = [
