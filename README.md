@@ -10,6 +10,7 @@ A **type-safe Python client generator** for the **Chrome DevTools Protocol (CDP)
 - **🎯 IntelliSense Support**: Perfect IDE autocompletion and type checking
 - **📦 Domain Separation**: Clean organization with separate modules for each CDP domain
 - **🔄 Always Up-to-Date**: Easy regeneration from latest protocol specs
+- **🤖 MCP Server**: Ready-to-use Model Context Protocol server for AI agents
 
 ## 🛠️ Installation & Setup
 
@@ -49,6 +50,53 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## 🤖 MCP Server for AI Agents
+
+**NEW:** This library now includes a complete **Model Context Protocol (MCP) server** that provides browser automation capabilities for AI agents!
+
+### Quick Start with AI Agents
+
+1. **Start Chrome with debugging:**
+```bash
+google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-mcp
+```
+
+2. **Run the MCP server:**
+```bash
+python examples/mcp_browser_control.py
+```
+
+3. **Connect your AI agent** to use browser automation tools:
+   - `navigate` - Go to any URL
+   - `click_element` - Click elements using CSS selectors  
+   - `type_text` - Type text into forms
+   - `take_screenshot` - Capture page images
+   - `execute_javascript` - Run JavaScript code
+   - `get_page_content` - Extract HTML content
+   - `wait_for_element` - Wait for elements to load
+
+### Example AI Agent Interaction
+
+```
+AI: I'll help you search Google. Let me navigate there first.
+
+🔧 Tool: navigate({"url": "https://google.com"})
+✅ Result: Successfully navigated to https://google.com
+
+AI: Now I'll take a screenshot to see the page.
+
+🔧 Tool: take_screenshot({"format": "png"})  
+✅ Result: [Screenshot captured]
+
+AI: I can see the Google homepage. Let me search for "AI agents".
+
+🔧 Tool: click_element({"selector": "input[name='q']"})
+🔧 Tool: type_text({"text": "AI agents"})
+🔧 Tool: click_element({"selector": "input[value='Google Search']"})
+```
+
+See [README_MCP.md](README_MCP.md) for complete MCP server documentation.
 
 ### Type Safety in Action
 
