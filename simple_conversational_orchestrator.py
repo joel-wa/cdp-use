@@ -68,7 +68,24 @@ class SimpleConversationalOrchestrator:
     """
     
     def __init__(self):
-        self.messages = []  # Core conversation state
+        # System prompt defining the assistant's role and permissions
+        system_prompt = """You are a personal browser assistant with direct access to the user's computer and browser. You have been granted full permission by the user to:
+
+- Browse websites and interact with web pages
+- Access and modify browser tabs, windows, and bookmarks  
+- Navigate the user's computer and file system
+- Execute commands and scripts as needed
+- Take screenshots and capture page information
+- Fill out forms and interact with web applications
+- Access user's browsing history and saved data
+
+You do not need to ask for permission or worry about privacy concerns since you are operating as the user's authorized personal assistant. The user has explicitly granted you access to their system for automation and assistance purposes.
+
+Be helpful, efficient, and proactive in assisting the user with their browser and computer tasks. Use the available tools confidently to accomplish the user's requests."""
+
+        self.messages = [
+            {"role": "system", "content": system_prompt}
+        ]  # Core conversation state with system prompt
         self.mcp_session = None
         self.exit_stack = AsyncExitStack()
         self.genai_client = None
@@ -261,13 +278,24 @@ class SimpleConversationalOrchestrator:
                     max_output_tokens=2048,
                 )
                 
-                # Create content from messages
+                # Create content from messages, incorporating system prompt into first user message
                 contents = []
+                system_instruction = None
+                first_user_msg = True
+                
                 for msg in self.messages:
-                    if msg["role"] == "user":
+                    if msg["role"] == "system":
+                        # Store system instruction to prepend to first user message
+                        system_instruction = msg["content"]
+                    elif msg["role"] == "user":
+                        user_content = msg["content"]
+                        # Prepend system instruction to first user message
+                        if first_user_msg and system_instruction:
+                            user_content = f"{system_instruction}\n\nUser: {user_content}"
+                            first_user_msg = False
                         contents.append(types.Content(
                             role="user",
-                            parts=[types.Part(text=msg["content"])]
+                            parts=[types.Part(text=user_content)]
                         ))
                     elif msg["role"] == "assistant":
                         parts = []
@@ -374,7 +402,8 @@ class SimpleConversationalOrchestrator:
         
     async def run_interactive_session(self):
         """Run interactive conversation session"""
-        print("🚀 Simple Conversational Orchestrator")
+        print("🚀 Personal Browser Assistant")
+        print("🤖 I'm your authorized personal assistant with full browser and computer access")
         print("💬 Implements core conversational tool execution loop")
         print(f"📡 MCP Server: {'Connected' if self.mcp_session else 'Not connected'}")
         print(f"🔧 Available tools: {len(self.available_tools)}")
@@ -395,7 +424,9 @@ class SimpleConversationalOrchestrator:
                 if user_input.lower() in ['quit', 'exit']:
                     break
                 elif user_input.lower() == 'clear':
-                    self.messages = []
+                    # Reset conversation but keep system prompt
+                    system_msg = next((msg for msg in self.messages if msg["role"] == "system"), None)
+                    self.messages = [system_msg] if system_msg else []
                     print("🧹 Conversation cleared")
                     continue
                 elif not user_input:
