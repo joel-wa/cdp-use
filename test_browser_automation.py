@@ -16,7 +16,8 @@ async def test_browser_automation():
     print(f"🌐 Testing browser automation with FastMCP...")
     
     # Import and create orchestrator
-    from LLMOrchestration.gemini_mcp_orchestrator import GeminiMCPOrchestrator
+    from gemini_mcp_orchestrator import GeminiMCPOrchestrator
+    # from LLMOrchestration.gemini_mcp_orchestrator import GeminiMCPOrchestrator
     
     orchestrator = GeminiMCPOrchestrator()
     
@@ -34,7 +35,7 @@ async def test_browser_automation():
             print(f"📄 Tool result type: {type(result)}")
             if hasattr(result, 'content') and result.content:
                 content_text = str(result.content[0].text) if result.content else "No content"
-                print(f"📄 Content preview: {content_text[:100]}...")
+                print(f"📄 Content preview: {content_text[:1000]}...")
             
         else:
             print("❌ No MCP session available")

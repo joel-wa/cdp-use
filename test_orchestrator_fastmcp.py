@@ -17,7 +17,8 @@ async def test_fastmcp_orchestrator():
     print(f"📋 MCP_SERVER_COMMAND: {os.environ['MCP_SERVER_COMMAND']}")
     
     # Import and create orchestrator
-    from LLMOrchestration.gemini_mcp_orchestrator import GeminiMCPOrchestrator
+    from gemini_mcp_orchestrator import GeminiMCPOrchestrator
+    # from LLMOrchestration.gemini_mcp_orchestrator import GeminiMCPOrchestrator
     
     orchestrator = GeminiMCPOrchestrator()
     

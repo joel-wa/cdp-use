@@ -22,7 +22,7 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'BrowserAgent', 'clients', 'gemini'))
 
-from LLMOrchestration.async_orchestrator import AsyncAdvancedOrchestrator
+from async_orchestrator import AsyncAdvancedOrchestrator
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
