@@ -11,6 +11,11 @@ uv sync  # or pip install -r requirements.txt
 ```
 
 ### 2. Start Chrome with Debugging
+```powershell
+# Windows
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="$env:TEMP\chrome-mcp-profile"
+```
+
 ```bash
 google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-mcp-profile
 ```

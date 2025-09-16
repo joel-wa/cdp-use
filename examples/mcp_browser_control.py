@@ -11,40 +11,74 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+import os
+import platform
+import shutil
+import tempfile
+
+def find_chrome_command():
+    """Return a Chrome/Chromium executable command or None."""
+    # Explicit override
+    env_path = os.environ.get("CHROME_PATH")
+    if env_path and os.path.isfile(env_path):
+        return env_path
+
+    system = platform.system()
+    if system == "Windows":
+        candidates = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                return c
+    elif system == "Darwin":
+        c = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        if os.path.isfile(c):
+            return c
+    else:
+        for name in ["google-chrome", "google-chrome-stable", "chromium-browser", "chromium"]:
+            p = shutil.which(name)
+            if p:
+                return p
+    return None
 
 def start_chrome_with_debugging():
-    """Start Chrome with remote debugging enabled"""
+    """Start Chrome with remote debugging enabled (cross-platform)."""
     print("Starting Chrome with remote debugging...")
-    
-    # Chrome command with debugging port
-    chrome_cmd = [
-        "google-chrome",
+    chrome_path = find_chrome_command()
+    if not chrome_path:
+        print("❌ Chrome not found. Set CHROME_PATH env var or install Chrome.")
+        return None
+
+    user_data_dir = os.path.join(tempfile.gettempdir(), "chrome-mcp-profile")
+
+    common_flags = [
         "--remote-debugging-port=9222",
         "--no-first-run",
-        "--no-default-browser-check", 
+        "--no-default-browser-check",
         "--disable-default-apps",
         "--disable-extensions",
         "--disable-background-timer-throttling",
         "--disable-renderer-backgrounding",
         "--disable-backgrounding-occluded-windows",
-        "--user-data-dir=/tmp/chrome-mcp-profile"
+        f'--user-data-dir="{user_data_dir}"',
     ]
-    
+
+    cmd = [chrome_path] + common_flags
+
     try:
-        # Start Chrome process
         process = subprocess.Popen(
-            chrome_cmd,
+            " ".join(cmd),
+            shell=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL
         )
-        print(f"✅ Chrome started with PID: {process.pid}")
-        print("🌐 Remote debugging available at: http://localhost:9222")
+        print(f"✅ Chrome started (PID {process.pid}) using: {chrome_path}")
+        print("🌐 Remote debugging: http://localhost:9222")
         return process
-    except FileNotFoundError:
-        print("❌ Chrome not found. Please install Google Chrome or modify the command.")
-        print("Alternative commands to try:")
-        print("  - chromium-browser --remote-debugging-port=9222")
-        print("  - google-chrome-stable --remote-debugging-port=9222")
+    except Exception as e:
+        print(f"❌ Failed to start Chrome: {e}")
         return None
 
 async def main():
