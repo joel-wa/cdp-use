@@ -94,12 +94,13 @@ class BrowserTools:
         except Exception as e:
             return f"Error clicking element {selector}: {str(e)}"
     
-    async def type_text(self, text: str, selector: str = None) -> str:
+    async def type_text(self, text: str, selector: str = None, press_enter: bool = False) -> str:
         """Type text into an element or the current focus
         
         Args:
             text: Text to type
             selector: Optional CSS selector for the element to focus first
+            press_enter: Whether to press Enter after typing the text
         """
         try:
             cdp_client = await self.get_cdp_client()
@@ -117,10 +118,73 @@ class BrowserTools:
                     'text': char
                 })
             
-            return f"Successfully typed text: {text}"
+            # Press Enter if requested
+            if press_enter:
+                await self.press_key('Enter')
+            
+            enter_msg = " and pressed Enter" if press_enter else ""
+            return f"Successfully typed text: {text}{enter_msg}"
             
         except Exception as e:
             return f"Error typing text: {str(e)}"
+    
+    async def press_key(self, key: str) -> str:
+        """Press a special key (Enter, Tab, Escape, etc.)
+        
+        Args:
+            key: The key to press (Enter, Tab, Escape, ArrowUp, ArrowDown, etc.)
+        """
+        try:
+            cdp_client = await self.get_cdp_client()
+            
+            # Map common key names to CDP key codes
+            key_codes = {
+                'Enter': 13,
+                'Tab': 9,
+                'Escape': 27,
+                'Space': 32,
+                'Backspace': 8,
+                'Delete': 46,
+                'ArrowUp': 38,
+                'ArrowDown': 40,
+                'ArrowLeft': 37,
+                'ArrowRight': 39,
+                'Home': 36,
+                'End': 35,
+                'PageUp': 33,
+                'PageDown': 34,
+                'F1': 112, 'F2': 113, 'F3': 114, 'F4': 115,
+                'F5': 116, 'F6': 117, 'F7': 118, 'F8': 119,
+                'F9': 120, 'F10': 121, 'F11': 122, 'F12': 123
+            }
+            
+            if key not in key_codes:
+                return f"Unsupported key: {key}. Supported keys: {', '.join(key_codes.keys())}"
+            
+            key_code = key_codes[key]
+            
+            # Send keyDown event
+            await cdp_client.send.Input.dispatchKeyEvent({
+                'type': 'keyDown',
+                'key': key,
+                'code': key,
+                'keyCode': key_code,
+                'windowsVirtualKeyCode': key_code
+            })
+            
+            # Send keyUp event
+            await cdp_client.send.Input.dispatchKeyEvent({
+                'type': 'keyUp',
+                'key': key,
+                'code': key,
+                'keyCode': key_code,
+                'windowsVirtualKeyCode': key_code
+            })
+            
+            return f"Successfully pressed key: {key}"
+            
+        except Exception as e:
+            return f"Error pressing key {key}: {str(e)}"
     
     async def take_screenshot(self, format_type: str = "png", quality: int = 90) -> Dict[str, Any]:
         """Take a screenshot of the current page
@@ -558,9 +622,14 @@ def register_browser_tools(server, browser_tools_instance):
         return await browser_tools_instance.click_element(selector)
     
     @server.tool()
-    async def type_text(text: str, selector: str = None) -> str:
+    async def type_text(text: str, selector: str = None, press_enter: bool = False) -> str:
         """Type text into an element or the current focus"""
-        return await browser_tools_instance.type_text(text, selector)
+        return await browser_tools_instance.type_text(text, selector, press_enter)
+    
+    @server.tool()
+    async def press_key(key: str) -> str:
+        """Press a special key (Enter, Tab, Escape, etc.)"""
+        return await browser_tools_instance.press_key(key)
     
     @server.tool()
     async def take_screenshot(format_type: str = "png", quality: int = 90) -> Dict[str, Any]:
