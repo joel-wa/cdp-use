@@ -124,28 +124,71 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
 
         return img_bytes
     
-    async def _maybe_auto_screenshot(self):
-        """Optionally capture screenshot for visual context based on configuration"""
+    async def _get_visual_context_description(self) -> Optional[str]:
+        """Capture screenshot and get text description of current page state"""
         if not ENABLE_VISUAL_CONTEXT:
-            logger.debug("Visual context capturing is disabled")
-            return
+            return None
             
-        # Check if auto-screenshot is enabled and we've hit the interval
-        if AUTO_SCREENSHOT_INTERVAL > 0 and self._tool_call_count % AUTO_SCREENSHOT_INTERVAL == 0:
-            try:
-                logger.info(f"📸 Auto-capturing screenshot (tool call #{self._tool_call_count})")
+        try:
+            logger.debug("📸 Capturing screenshot for visual context...")
+            
+            # Execute screenshot tool directly
+            result = await self.mcp_session.call_tool("take_screenshot", {
+                "format": "png", 
+                "fullPage": False
+            })
+            
+            # Extract base64 image data
+            image_data = None
+            if hasattr(result, 'content') and result.content:
+                for content_item in result.content:
+                    if hasattr(content_item, 'text'):
+                        try:
+                            parsed = json.loads(content_item.text)
+                            if isinstance(parsed, dict) and parsed.get("type") == "image":
+                                image_data = parsed.get("data")
+                                break
+                        except json.JSONDecodeError:
+                            pass
+                            
+            if not image_data:
+                logger.warning("No image data found in screenshot result")
+                return None
                 
-                # Execute screenshot tool to get visual context
-                screenshot_result = await self._execute_tool("take_screenshot", {
-                    "format": "png",
-                    "fullPage": False
-                })
+            # Convert to bytes for Gemini
+            img_bytes = self._decode_base64_image(image_data)
+            if not img_bytes or len(img_bytes) > MAX_IMAGE_BYTES:
+                logger.warning(f"Image too large or invalid: {len(img_bytes) if img_bytes else 0} bytes")
+                return None
                 
-                # Images are automatically detected and added to _pending_images in _execute_tool
-                logger.debug(f"Auto-screenshot captured, pending images: {len(self._pending_images)}")
+            logger.debug(f"Screenshot captured: {len(img_bytes)} bytes")
+            
+            # Send to Gemini for description
+            contents = [
+                types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
+                types.Part(text="Describe what you see in this browser screenshot. Focus on the main content, UI elements, and current state. Keep it concise but informative.")
+            ]
+            
+            response = await self.genai_client.aio.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    max_output_tokens=300
+                )
+            )
+            
+            if response.candidates and response.candidates[0].content:
+                description = response.candidates[0].content.parts[0].text
+                logger.debug(f"Visual context: {description[:100]}...")
+                return f"[CURRENT SCREEN: {description}]"
+            else:
+                logger.warning("No description generated from screenshot")
+                return None
                 
-            except Exception as e:
-                logger.warning(f"Auto-screenshot failed: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to get visual context: {e}")
+            return None
         
     async def initialize(self):
         """Initialize Gemini client and MCP connection"""
@@ -335,12 +378,22 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
         """
         
         # Step 1: Add user input to messages array
+        # First, get visual context if enabled
+        visual_context = await self._get_visual_context_description()
+        
+        # Enhance user input with visual context
+        enhanced_input = user_input
+        if visual_context:
+            enhanced_input = f"{visual_context}\n\nUser: {user_input}"
+            
         self.messages.append({
             "role": "user", 
-            "content": user_input
+            "content": enhanced_input
         })
         
         logger.info(f"💬 User input added to messages (total: {len(self.messages)})")
+        if visual_context:
+            logger.info("👁️ Visual context included automatically")
         
         # Core loop: send messages → get response → execute tools → repeat
         max_iterations = 10  # Safety limit
@@ -365,17 +418,8 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
                 system_instruction = None
                 first_user_msg = True
 
-                # If visual context is enabled and there are pending images, prepend them as parts
-                if ENABLE_VISUAL_CONTEXT and self._pending_images:
-                    for img in self._pending_images:
-                        try:
-                            img_bytes = self._decode_base64_image(img["data"])
-                            if img_bytes and len(img_bytes) <= MAX_IMAGE_BYTES:
-                                contents.append(types.Part.from_bytes(data=img_bytes, mime_type=img["mime"]))
-                        except Exception as e:
-                            logger.warning(f"Failed to attach image from {img.get('source_tool')}: {e}")
-                    # clear pending images after attaching
-                    self._pending_images = []
+                # Clear any leftover pending images (now using text descriptions instead)
+                self._pending_images = []
                 
                 for msg in self.messages:
                     if msg["role"] == "system":
@@ -484,12 +528,19 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
                             "content": json.dumps(tool_result)
                         })
                         
-                        # Increment tool call count for auto-screenshot logic
+                        # Increment tool call count 
                         self._tool_call_count += 1
                         
-                    # Optional: Auto-capture screenshot for visual context
-                    await self._maybe_auto_screenshot()
-                        
+                    # Get updated visual context after tool execution
+                    post_tool_visual_context = await self._get_visual_context_description()
+                    if post_tool_visual_context:
+                        # Add visual context as a system message for the next iteration
+                        self.messages.append({
+                            "role": "user",
+                            "content": f"{post_tool_visual_context}\n\n[Tools executed successfully. Please continue based on the current screen state.]"
+                        })
+                        logger.info("👁️ Post-tool visual context captured")
+                    
                     # Continue loop to send updated messages back to LLM
                     continue
                 else:
