@@ -75,11 +75,11 @@ class SimpleConversationalOrchestrator:
     
     def __init__(self):
         # System prompt defining the assistant's role and permissions
-        system_prompt = """You are a personal browser assistant with direct access to the user's computer and browser. You have been granted full permission by the user to:
+        system_prompt = """You are a Jovera Browser, a personal browser assistant with direct access to the user's computer and browser. You have been granted full permission by the user to:
 
 - Browse websites and interact with web pages
+-Navigate and fully control the browsser
 - Access and modify browser tabs, windows, and bookmarks  
-- Navigate the user's computer and file system
 - Execute commands and scripts as needed
 - Take screenshots and capture page information
 - Fill out forms and interact with web applications
@@ -243,21 +243,21 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
             for elem in elements:
                 elem_desc = f"  #{elem['index']}: {elem['tag'].upper()}"
                 if elem.get('text') and elem['text'].strip():
-                    elem_desc += f" - '{elem['text'][:50]}'"
+                    elem_desc += f" - '{elem['text']}'"
                 if elem.get('attributes'):
                     # Show important attributes
                     attrs = elem['attributes']
                     if attrs.get('type'):
                         elem_desc += f" (type: {attrs['type']})"
                     if attrs.get('placeholder'):
-                        elem_desc += f" (placeholder: {attrs['placeholder'][:30]})"
+                        elem_desc += f" (placeholder: {attrs['placeholder']})"
                     if attrs.get('value'):
-                        elem_desc += f" (value: {attrs['value'][:30]})"
+                        elem_desc += f" (value: {attrs['value']})"
                 
                 context_parts.append(elem_desc)
             
-            if len(elements_data["elements"]) > 15:
-                context_parts.append(f"  ... and {len(elements_data['elements']) - 15} more elements")
+            # if len(elements_data["elements"]) > 15:
+            #     context_parts.append(f"  ... and {len(elements_data['elements']) - 15} more elements")
                 
             context_parts.append("]")
             
