@@ -18,7 +18,9 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
+import shlex
 import base64
 import binascii
 from typing import Dict, Any, List, Optional
@@ -52,6 +54,31 @@ ENABLE_VISUAL_CONTEXT = os.getenv("ENABLE_VISUAL_CONTEXT", "false").lower() == "
 ENABLE_INTERACTIVE_CONTEXT = os.getenv("ENABLE_INTERACTIVE_CONTEXT", "true").lower() == "true"
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(1024 * 1024)))  # 1MB default
 AUTO_SCREENSHOT_INTERVAL = int(os.getenv("AUTO_SCREENSHOT_INTERVAL", "0"))  # 0 = disabled
+
+# Visual-Interactive Mapping Configuration
+ENABLE_VISUAL_INTERACTIVE_MAP = os.getenv("ENABLE_VISUAL_INTERACTIVE_MAP", "true").lower() == "true"
+VISUAL_MAP_MAX_ELEMENTS = int(os.getenv("VISUAL_MAP_MAX_ELEMENTS", "15"))
+VISUAL_MAP_OVERLAY_COLOR = os.getenv("VISUAL_MAP_OVERLAY_COLOR", "rgba(255,0,0,0.8)")
+VISUAL_MAP_DESCRIPTION_PROMPT = os.getenv("VISUAL_MAP_DESCRIPTION_PROMPT", 
+    """Analyze this screenshot with numbered red overlay boxes on interactive elements.
+    Specify the elements that are relevant to performing the action and achieving the user's goal: {user_input}
+
+For each numbered element you can see, describe it in this exact format:
+Element #1: [Good visual description - color, text, position, type]
+Element #2: [Good visual description - color, text, position, type]
+...
+
+Focus on:
+- What the element looks like visually
+- Any text or icons on/near it  
+- Its visual purpose (button, input, link, etc.)
+- Position context (top, bottom, left, right, near other elements)
+- Explanation of the elements which a blind human would find useful.
+
+Only describe elements where you can clearly see the red numbered overlay.
+Make sure a blind person can easily understand the what is currently on the screen, screen layout and interactive options.
+"""
+)
 
 # Setup logging
 logging.basicConfig(
@@ -268,6 +295,221 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
         except Exception as e:
             logger.warning(f"Failed to get interactive elements context: {e}")
             return None
+
+    async def _get_visual_interactive_map(self, user_input) -> Optional[str]:
+        """
+        Create unified visual-interactive context by:
+        1. Get interactive elements with visual overlays
+        2. Take screenshot with numbered element overlays visible
+        3. Get AI to describe each numbered element in the screenshot
+        4. Map descriptions to interactive element indices
+        5. Return formatted map for LLM consumption
+        """
+        if not ENABLE_VISUAL_INTERACTIVE_MAP:
+            logger.debug("Visual-interactive mapping disabled, falling back to separate contexts")
+            return None
+            
+        try:
+            logger.debug("🔗 Creating visual-interactive mapping...")
+            
+            # Step 1: Get interactive elements with visual overlays
+            elements_result = await self.mcp_session.call_tool("get_interactive_elements", {
+                "show_visual": True,
+                "color": VISUAL_MAP_OVERLAY_COLOR,
+                "label": True  # Show element numbers on screen
+            })
+            
+            # Extract elements data
+            elements_data = None
+            if hasattr(elements_result, 'content') and elements_result.content:
+                for content_item in elements_result.content:
+                    if hasattr(content_item, 'text'):
+                        try:
+                            parsed = json.loads(content_item.text)
+                            if isinstance(parsed, dict) and "elements" in parsed:
+                                elements_data = parsed
+                                break
+                        except json.JSONDecodeError:
+                            pass
+            
+            if not elements_data or not elements_data.get("elements"):
+                logger.debug("No interactive elements found for mapping")
+                return None
+            
+            # Limit elements to prevent token overflow
+            elements = elements_data["elements"][:VISUAL_MAP_MAX_ELEMENTS]
+            logger.debug(f"Processing {len(elements)} elements for visual-interactive mapping")
+            
+            # Step 2: Take screenshot with numbered overlays visible
+            screenshot_result = await self.mcp_session.call_tool("take_screenshot", {
+                "format": "png",
+                "fullPage": False
+            })
+            
+            # Extract screenshot data
+            image_data = None
+            if hasattr(screenshot_result, 'content') and screenshot_result.content:
+                for content_item in screenshot_result.content:
+                    if hasattr(content_item, 'text'):
+                        try:
+                            parsed = json.loads(content_item.text)
+                            if isinstance(parsed, dict) and parsed.get("type") == "image":
+                                image_data = parsed.get("data")
+                                break
+                        except json.JSONDecodeError:
+                            pass
+            
+            if not image_data:
+                logger.warning("No screenshot data found for visual-interactive mapping")
+                return None
+            
+            # Convert to bytes for Gemini
+            img_bytes = self._decode_base64_image(image_data)
+            if not img_bytes or len(img_bytes) > MAX_IMAGE_BYTES:
+                logger.warning(f"Screenshot too large or invalid: {len(img_bytes) if img_bytes else 0} bytes")
+                return None
+            
+            # Step 3: Get AI visual descriptions with element mapping
+            logger.debug("📝 Getting AI descriptions of numbered elements...")
+            VISUAL_MAP_DESCRIPTION_PROMPT.format(user_input=user_input)
+            contents = [
+                types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
+                types.Part(text=VISUAL_MAP_DESCRIPTION_PROMPT)
+            ]
+            
+            response = await self.genai_client.aio.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    max_output_tokens=800
+                )
+            )
+            
+            if not response.candidates or not response.candidates[0].content:
+                logger.warning("No visual descriptions generated")
+                return None
+            
+            visual_descriptions = response.candidates[0].content.parts[0].text
+            logger.debug(f"Visual descriptions received: {visual_descriptions[:200]}...")
+            
+            # Step 4: Correlate visual descriptions with interactive elements
+            visual_map = await self._correlate_visual_with_interactive(
+                visual_descriptions, 
+                {elem['index']: elem for elem in elements}
+            )
+            
+            # Step 5: Hide visual indicators for clean page state
+            try:
+                await self.mcp_session.call_tool("hide_visual_indicators", {})
+            except Exception:
+                pass  # Ignore if hiding fails
+            
+            if not visual_map:
+                logger.debug("No valid visual-interactive correlations found")
+                return None
+            
+            # Format final context
+            return self._format_visual_interactive_context(visual_map)
+            
+        except Exception as e:
+            logger.warning(f"Visual-interactive mapping failed: {e}")
+            # Hide indicators in case of error
+            try:
+                await self.mcp_session.call_tool("hide_visual_indicators", {})
+            except Exception:
+                pass
+            
+            # Return None to trigger fallback to separate contexts
+            return None
+    
+    async def _correlate_visual_with_interactive(self, visual_descriptions: str, elements_data: dict) -> dict:
+        """Correlate AI visual descriptions with interactive element data"""
+        visual_map = {}
+        
+        for line in visual_descriptions.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Parse AI descriptions in format "Element #N: description"
+            match = re.match(r'Element #(\d+):\s*(.+)', line, re.IGNORECASE)
+            if not match:
+                continue
+                
+            element_num = int(match.group(1))
+            visual_desc = match.group(2).strip()
+            
+            # Find corresponding element in interactive data
+            if element_num in elements_data:
+                element_data = elements_data[element_num]
+                
+                # Enhance description with interactive metadata
+                enhanced_desc = visual_desc
+                if element_data.get('text') and element_data['text'].strip():
+                    enhanced_desc += f" (text: '{element_data['text']}')"
+                if element_data.get('attributes', {}).get('type'):
+                    enhanced_desc += f" (type: {element_data['attributes']['type']})"
+                if element_data.get('attributes', {}).get('placeholder'):
+                    enhanced_desc += f" (placeholder: '{element_data['attributes']['placeholder']}')"
+                    
+                visual_map[enhanced_desc] = f"#{element_num}"
+                
+        logger.debug(f"Correlated {len(visual_map)} visual descriptions to interactive elements")
+        return visual_map
+    
+    def _format_visual_interactive_context(self, visual_map: dict) -> str:
+        """Format the final context for LLM consumption"""
+        context_parts = ["VISUAL-INTERACTIVE MAP:"]
+        
+        for description, index in visual_map.items():
+            context_parts.append(f'"{description}": {index}')
+        
+        context_parts.append("")
+        context_parts.append(f"To interact with any element, use its index (e.g., click_element_by_index({list(visual_map.values())[0].replace('#', '')}) for the first element)")
+        
+        return "\n".join(context_parts)
+
+    async def _get_context_with_fallback(self, user_input) -> tuple[Optional[str], str]:
+        """
+        Get page context using visual-interactive mapping with robust fallbacks.
+        
+        Returns:
+            tuple: (context_string, context_type_used)
+        """
+        # Fallback chain:
+        # 1. Visual-Interactive mapping (preferred)
+        # 2. Separate visual + interactive contexts
+        # 3. Interactive context only
+        # 4. Visual context only  
+        # 5. None (no context available)
+        
+        try:
+            # Primary: Visual-Interactive mapping
+            visual_interactive_map = await self._get_visual_interactive_map(user_input)
+            if visual_interactive_map:
+                return visual_interactive_map, "visual-interactive-map"
+                
+            logger.debug("Visual-Interactive mapping not available, trying separate contexts...")
+            
+            # Fallback 1: Separate contexts (current behavior)
+            interactive_context = await self._get_interactive_elements_context()
+            visual_context = await self._get_visual_context_description()
+            
+            if visual_context and interactive_context:
+                combined = f"{visual_context}\n\n{interactive_context}"
+                return combined, "visual+interactive"
+            elif interactive_context:
+                return interactive_context, "interactive"
+            elif visual_context:
+                return visual_context, "visual"
+            else:
+                logger.warning("No context available from any method")
+                return None, "none"
+                
+        except Exception as e:
+            logger.error(f"Error in context fallback chain: {e}")
+            return None, "error"
         
     async def initialize(self):
         """Initialize Gemini client and MCP connection"""
@@ -510,33 +752,32 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
         5. Return final response
         """
         
-        # Step 1: Add user input to messages array
-        # Get interactive elements context
-        interactive_context = await self._get_interactive_elements_context()
-        # Then, get visual context if enabled
-        visual_context = await self._get_visual_context_description()
+        # Step 1: Add user input to messages array with context
+        context, context_type = await self._get_context_with_fallback(user_input)
         
-        
-        # Enhance user input with context
-        enhanced_input = user_input
-        if visual_context:
-            enhanced_input = f"{visual_context}\n\nUser: {user_input}"
-        if interactive_context:
-            if visual_context:
-                enhanced_input = f"{visual_context}\n\n{interactive_context}\n\nUser: {user_input}"
-            else:
-                enhanced_input = f"{interactive_context}\n\nUser: {user_input}"
+        # Enhance user input with context if available
+        if context:
+            enhanced_input = f"{context}\n\nUser: {user_input}"
+            
+            # Log context type used
+            if context_type == "visual-interactive-map":
+                logger.info("🔗 Visual-Interactive mapping context included")
+            elif context_type == "visual+interactive":
+                logger.info("👁️🔍 Visual + Interactive contexts included (fallback)")
+            elif context_type == "interactive":
+                logger.info("🔍 Interactive context only (fallback)")
+            elif context_type == "visual":
+                logger.info("👁️ Visual context only (fallback)")
+        else:
+            enhanced_input = user_input
+            logger.warning("⚠️ No context available - proceeding without page context")
             
         self.messages.append({
             "role": "user", 
             "content": enhanced_input
         })
         
-        logger.info(f"💬 User input added to messages (total: {len(self.messages)})")
-        if visual_context:
-            logger.info("👁️ Visual context included automatically")
-        if interactive_context:
-            logger.info("🔍 Interactive elements context included automatically")
+        logger.info(f"� User input added to messages (total: {len(self.messages)}, context: {context_type})")
         
         # Core loop: send messages → get response → execute tools → repeat
         max_iterations = 10  # Safety limit
