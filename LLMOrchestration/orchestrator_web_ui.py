@@ -178,31 +178,61 @@ class OrchestratorWebUI:
     async def handle_screenshot_result(self, tool_name: str, result, websocket: WebSocket):
         """Handle screenshot tool results specially to display images in UI"""
         try:
-            if tool_name == "take_screenshot" and result.result and result.error is None:
+            if tool_name == "take_screenshot" and result.error is None:
+                logger.info(f"🔍 Processing screenshot result. Type: {type(result.result)}")
+                logger.info(f"🔍 Result content: {str(result.result)[:200]}...")  # First 200 chars
+                
                 # Extract base64 image data from the result
                 screenshot_data = None
-                if isinstance(result.result, dict):
-                    screenshot_data = result.result.get("image_data") or result.result.get("base64_image")
-                elif isinstance(result.result, str):
-                    # Sometimes the result might be just the base64 string
-                    screenshot_data = result.result
+                
+                if result.result:
+                    if isinstance(result.result, dict):
+                        # Try multiple possible keys for image data
+                        for key in ["image_data", "base64_image", "screenshot", "image", "data"]:
+                            if key in result.result:
+                                screenshot_data = result.result[key]
+                                logger.info(f"📸 Found screenshot data in key: {key}")
+                                break
+                        
+                        # Also check if the entire result is nested
+                        if not screenshot_data and "result" in result.result:
+                            nested_result = result.result["result"]
+                            if isinstance(nested_result, str):
+                                screenshot_data = nested_result
+                                logger.info(f"📸 Found screenshot data in nested result")
+                    
+                    elif isinstance(result.result, str):
+                        # Sometimes the result might be just the base64 string
+                        screenshot_data = result.result
+                        logger.info(f"📸 Screenshot data is direct string")
                 
                 if screenshot_data:
-                    await self.send_message(websocket, {
-                        "type": "screenshot",
-                        "data": {
-                            "image_data": screenshot_data,
-                            "tool_name": tool_name,
-                            "message": "📸 Screenshot captured",
-                            "timestamp": datetime.now().isoformat()
-                        }
-                    })
-                    logger.info(f"📸 Screenshot data sent to UI")
+                    # Clean the base64 data (remove data:image/png;base64, prefix if present)
+                    if screenshot_data.startswith('data:image/'):
+                        screenshot_data = screenshot_data.split(',', 1)[1]
+                    
+                    # Validate it looks like base64
+                    if len(screenshot_data) > 100:  # Reasonable minimum for image
+                        await self.send_message(websocket, {
+                            "type": "screenshot",
+                            "data": {
+                                "image_data": screenshot_data,
+                                "tool_name": tool_name,
+                                "message": "📸 Screenshot captured",
+                                "timestamp": datetime.now().isoformat()
+                            }
+                        })
+                        logger.info(f"📸 Screenshot data sent to UI (length: {len(screenshot_data)})")
+                    else:
+                        logger.warning(f"⚠️ Screenshot data too short: {len(screenshot_data) if screenshot_data else 0}")
                 else:
-                    logger.warning(f"⚠️ Screenshot tool completed but no image data found")
+                    logger.warning(f"⚠️ Screenshot tool completed but no image data found in result")
+                    logger.warning(f"⚠️ Full result structure: {result.result}")
             
         except Exception as e:
             logger.error(f"Error handling screenshot result: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
     
     async def take_final_screenshot(self, websocket: WebSocket):
         """Take a final screenshot at the end of goal execution"""
@@ -218,29 +248,81 @@ class OrchestratorWebUI:
                     }
                 })
                 
-                # Create a tool call for taking screenshot
-                screenshot_tool_call = {
-                    "function": {
-                        "name": "take_screenshot",
-                        "arguments": {}
-                    }
-                }
-                
-                # Execute screenshot using the tool orchestrator
-                if self.orchestrator.tool_orchestrator:
-                    result = await self.orchestrator.tool_orchestrator._execute_single_tool_with_recovery(screenshot_tool_call)
-                    await self.handle_screenshot_result("take_screenshot", result, websocket)
+                # Try to execute the screenshot tool directly using MCP
+                try:
+                    # Call the MCP tool directly
+                    mcp_result = await self.orchestrator.mcp_session.call_tool(
+                        name="take_screenshot",
+                        arguments={}
+                    )
                     
-                    await self.send_message(websocket, {
-                        "type": "final_screenshot_complete",
-                        "data": {
-                            "message": "📸 Final screenshot completed",
-                            "timestamp": datetime.now().isoformat()
+                    logger.info(f"📸 MCP screenshot result type: {type(mcp_result)}")
+                    logger.info(f"📸 MCP screenshot result: {str(mcp_result)[:300]}...")
+                    
+                    # Extract image data from MCP result
+                    screenshot_data = None
+                    if hasattr(mcp_result, 'content') and mcp_result.content:
+                        for content_item in mcp_result.content:
+                            if hasattr(content_item, 'text'):
+                                try:
+                                    # Try to parse as JSON
+                                    import json
+                                    parsed = json.loads(content_item.text)
+                                    if isinstance(parsed, dict):
+                                        # Look for image data in various keys
+                                        for key in ["image_data", "base64_image", "screenshot", "image", "data"]:
+                                            if key in parsed:
+                                                screenshot_data = parsed[key]
+                                                break
+                                except json.JSONDecodeError:
+                                    # Maybe it's just the base64 string directly
+                                    if len(content_item.text) > 100:
+                                        screenshot_data = content_item.text
+                    
+                    if screenshot_data:
+                        # Clean the base64 data
+                        if screenshot_data.startswith('data:image/'):
+                            screenshot_data = screenshot_data.split(',', 1)[1]
+                        
+                        await self.send_message(websocket, {
+                            "type": "screenshot",
+                            "data": {
+                                "image_data": screenshot_data,
+                                "tool_name": "take_screenshot",
+                                "message": "📸 Final screenshot captured",
+                                "timestamp": datetime.now().isoformat()
+                            }
+                        })
+                        logger.info(f"📸 Final screenshot sent to UI (length: {len(screenshot_data)})")
+                    else:
+                        logger.warning(f"⚠️ No image data found in MCP result")
+                        
+                except Exception as mcp_error:
+                    logger.error(f"Error calling MCP screenshot tool: {mcp_error}")
+                    
+                    # Fallback: try using the tool orchestrator
+                    if self.orchestrator.tool_orchestrator:
+                        screenshot_tool_call = {
+                            "function": {
+                                "name": "take_screenshot",
+                                "arguments": {}
+                            }
                         }
-                    })
+                        result = await self.orchestrator.tool_orchestrator._execute_single_tool_with_recovery(screenshot_tool_call)
+                        await self.handle_screenshot_result("take_screenshot", result, websocket)
+                
+                await self.send_message(websocket, {
+                    "type": "final_screenshot_complete",
+                    "data": {
+                        "message": "📸 Final screenshot completed",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                })
                     
         except Exception as e:
             logger.error(f"Error taking final screenshot: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             await self.send_message(websocket, {
                 "type": "error",
                 "data": {
