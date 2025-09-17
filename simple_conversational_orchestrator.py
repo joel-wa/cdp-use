@@ -49,6 +49,7 @@ MCP_SERVER_COMMAND = os.getenv("MCP_SERVER_COMMAND", '"C:\\Users\\RanVic\\cdp-us
 MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio")  # "http", "stdio", or "auto"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 ENABLE_VISUAL_CONTEXT = os.getenv("ENABLE_VISUAL_CONTEXT", "false").lower() == "true"
+ENABLE_INTERACTIVE_CONTEXT = os.getenv("ENABLE_INTERACTIVE_CONTEXT", "true").lower() == "true"
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(1024 * 1024)))  # 1MB default
 AUTO_SCREENSHOT_INTERVAL = int(os.getenv("AUTO_SCREENSHOT_INTERVAL", "0"))  # 0 = disabled
 
@@ -188,6 +189,84 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
                 
         except Exception as e:
             logger.warning(f"Failed to get visual context: {e}")
+            return None
+
+    async def _get_interactive_elements_context(self) -> Optional[str]:
+        """Capture interactive elements and get text description of available interactions"""
+        if not ENABLE_INTERACTIVE_CONTEXT:
+            return None
+            
+        try:
+            logger.debug("🔍 Capturing interactive elements for context...")
+            
+            # First hide any existing visual indicators to clean the page
+            try:
+                await self.mcp_session.call_tool("hide_visual_indicators", {})
+            except Exception:
+                pass  # Ignore if no indicators to hide
+            
+            # Get interactive elements (this will show visual indicators)
+            result = await self.mcp_session.call_tool("get_interactive_elements", {
+                "show_visual": True,
+                "color": "rgba(0,255,0,0.2)"  # Use green for context capture
+            })
+            
+            # Extract elements data
+            elements_data = None
+            if hasattr(result, 'content') and result.content:
+                for content_item in result.content:
+                    if hasattr(content_item, 'text'):
+                        try:
+                            parsed = json.loads(content_item.text)
+                            if isinstance(parsed, dict) and "elements" in parsed:
+                                elements_data = parsed
+                                break
+                        except json.JSONDecodeError:
+                            pass
+            
+            # Hide visual indicators after capturing
+            try:
+                await self.mcp_session.call_tool("hide_visual_indicators", {})
+            except Exception:
+                pass  # Ignore if hiding fails
+                            
+            if not elements_data or not elements_data.get("elements"):
+                logger.debug("No interactive elements found")
+                return None
+                
+            # Format elements for context
+            elements = elements_data["elements"][:15]  # Limit to first 15 elements to avoid token overflow
+            
+            context_parts = []
+            context_parts.append(f"[INTERACTIVE ELEMENTS AVAILABLE ({elements_data.get('total_elements', 0)} total):")
+            
+            for elem in elements:
+                elem_desc = f"  #{elem['index']}: {elem['tag'].upper()}"
+                if elem.get('text') and elem['text'].strip():
+                    elem_desc += f" - '{elem['text'][:50]}'"
+                if elem.get('attributes'):
+                    # Show important attributes
+                    attrs = elem['attributes']
+                    if attrs.get('type'):
+                        elem_desc += f" (type: {attrs['type']})"
+                    if attrs.get('placeholder'):
+                        elem_desc += f" (placeholder: {attrs['placeholder'][:30]})"
+                    if attrs.get('value'):
+                        elem_desc += f" (value: {attrs['value'][:30]})"
+                
+                context_parts.append(elem_desc)
+            
+            if len(elements_data["elements"]) > 15:
+                context_parts.append(f"  ... and {len(elements_data['elements']) - 15} more elements")
+                
+            context_parts.append("]")
+            
+            context_text = "\n".join(context_parts)
+            logger.debug(f"Interactive elements context: {len(elements)} elements")
+            return context_text
+                
+        except Exception as e:
+            logger.warning(f"Failed to get interactive elements context: {e}")
             return None
         
     async def initialize(self):
@@ -381,10 +460,18 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
         # First, get visual context if enabled
         visual_context = await self._get_visual_context_description()
         
-        # Enhance user input with visual context
+        # Get interactive elements context
+        interactive_context = await self._get_interactive_elements_context()
+        
+        # Enhance user input with context
         enhanced_input = user_input
         if visual_context:
             enhanced_input = f"{visual_context}\n\nUser: {user_input}"
+        if interactive_context:
+            if visual_context:
+                enhanced_input = f"{visual_context}\n\n{interactive_context}\n\nUser: {user_input}"
+            else:
+                enhanced_input = f"{interactive_context}\n\nUser: {user_input}"
             
         self.messages.append({
             "role": "user", 
@@ -394,6 +481,8 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
         logger.info(f"💬 User input added to messages (total: {len(self.messages)})")
         if visual_context:
             logger.info("👁️ Visual context included automatically")
+        if interactive_context:
+            logger.info("🔍 Interactive elements context included automatically")
         
         # Core loop: send messages → get response → execute tools → repeat
         max_iterations = 10  # Safety limit
@@ -533,13 +622,33 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
                         
                     # Get updated visual context after tool execution
                     post_tool_visual_context = await self._get_visual_context_description()
-                    if post_tool_visual_context:
-                        # Add visual context as a system message for the next iteration
+                    
+                    # Get updated interactive elements context after tool execution
+                    post_tool_interactive_context = await self._get_interactive_elements_context()
+                    
+                    if post_tool_visual_context or post_tool_interactive_context:
+                        # Combine contexts for the next iteration
+                        context_message = ""
+                        if post_tool_visual_context:
+                            context_message += post_tool_visual_context
+                        if post_tool_interactive_context:
+                            if post_tool_visual_context:
+                                context_message += f"\n\n{post_tool_interactive_context}"
+                            else:
+                                context_message += post_tool_interactive_context
+                        
+                        context_message += "\n\n[Tools executed successfully. Please continue based on the current screen state and available interactive elements.]"
+                        
+                        # Add context as a system message for the next iteration
                         self.messages.append({
                             "role": "user",
-                            "content": f"{post_tool_visual_context}\n\n[Tools executed successfully. Please continue based on the current screen state.]"
+                            "content": context_message
                         })
-                        logger.info("👁️ Post-tool visual context captured")
+                        
+                        if post_tool_visual_context:
+                            logger.info("👁️ Post-tool visual context captured")
+                        if post_tool_interactive_context:
+                            logger.info("🔍 Post-tool interactive elements context captured")
                     
                     # Continue loop to send updated messages back to LLM
                     continue

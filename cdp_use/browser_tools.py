@@ -102,7 +102,7 @@ class BrowserTools:
             selector: Optional CSS selector for the element to focus first
         """
         try:
-            cdp_client = await self.server._get_cdp_client()
+            cdp_client = await self.get_cdp_client()
             
             # If selector provided, click the element first to focus it
             if selector:
@@ -155,7 +155,7 @@ class BrowserTools:
             returnByValue: Whether to return the result by value
         """
         try:
-            cdp_client = await self.server._get_cdp_client()
+            cdp_client = await self.get_cdp_client()
             
             result = await cdp_client.send.Runtime.evaluate({
                 'expression': expression,
@@ -178,7 +178,7 @@ class BrowserTools:
             human_readable: If True, returns only clean readable text visible to users (default: True)
         """
         try:
-            cdp_client = await self.server._get_cdp_client()
+            cdp_client = await self.get_cdp_client()
             
             if selector:
                 # Get specific element content
@@ -370,7 +370,7 @@ class BrowserTools:
             timeout: Timeout in milliseconds
         """
         try:
-            cdp_client = await self.server._get_cdp_client()
+            cdp_client = await self.get_cdp_client()
             
             # Use Runtime.evaluate to wait for element with timeout
             wait_script = f"""
@@ -418,7 +418,7 @@ class BrowserTools:
             show_bounding_boxes_func: Function to show bounding boxes
         """
         try:
-            cdp_client = await self.server._get_cdp_client()
+            cdp_client = await self.get_cdp_client()
             
             # Update the selector map
             if update_selector_map_func:
@@ -467,7 +467,7 @@ class BrowserTools:
             update_selector_map_func: Function to update the selector map
         """
         try:
-            cdp_client = await self.server._get_cdp_client()
+            cdp_client = await self.get_cdp_client()
             
             # Make sure we have the latest selector map
             selector_map = self.get_selector_map()
@@ -510,7 +510,7 @@ class BrowserTools:
     async def hide_visual_indicators(self) -> str:
         """Hide the visual indicators (bounding boxes) from the page"""
         try:
-            cdp_client = await self.server._get_cdp_client()
+            cdp_client = await self.get_cdp_client()
             
             # JavaScript to remove the overlay
             js = r"""
