@@ -130,7 +130,7 @@ class BrowserTools:
             quality: Image quality for JPEG (1-100)
         """
         try:
-            cdp_client = await self.server._get_cdp_client()
+            cdp_client = await self.get_cdp_client()
             
             params = {'format': format_type}
             if format_type == 'jpeg':

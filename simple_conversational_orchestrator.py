@@ -19,6 +19,8 @@ import json
 import logging
 import os
 import sys
+import base64
+import binascii
 from typing import Dict, Any, List, Optional
 from contextlib import AsyncExitStack
 from dotenv import load_dotenv
@@ -46,6 +48,9 @@ MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://127.0.0.1:12306/mcp")
 MCP_SERVER_COMMAND = os.getenv("MCP_SERVER_COMMAND", '"C:\\Users\\RanVic\\cdp-use\\.venv\\Scripts\\python.exe" "C:\\Users\\RanVic\\cdp-use\\examples\\mcp_browser_control.py" --server-only')
 MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio")  # "http", "stdio", or "auto"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+ENABLE_VISUAL_CONTEXT = os.getenv("ENABLE_VISUAL_CONTEXT", "false").lower() == "true"
+MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(1024 * 1024)))  # 1MB default
+AUTO_SCREENSHOT_INTERVAL = int(os.getenv("AUTO_SCREENSHOT_INTERVAL", "0"))  # 0 = disabled
 
 # Setup logging
 logging.basicConfig(
@@ -90,6 +95,57 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
         self.exit_stack = AsyncExitStack()
         self.genai_client = None
         self.available_tools = []
+        # transient buffer for images to include in next LLM call
+        self._pending_images = []
+        # count executed tool calls to support auto-screenshot sampling
+        self._tool_call_count = 0
+
+    def _decode_base64_image(self, b64str: str) -> Optional[bytes]:
+        """Decode a base64 image string. Handles optional data URL prefixes.
+
+        Returns raw bytes or None on failure.
+        """
+        if not b64str:
+            return None
+
+        # Strip data URL prefix if present
+        if b64str.startswith("data:"):
+            try:
+                _, rest = b64str.split(',', 1)
+                b64str = rest
+            except ValueError:
+                # malformed data URL
+                return None
+
+        try:
+            img_bytes = base64.b64decode(b64str)
+        except (binascii.Error, TypeError):
+            return None
+
+        return img_bytes
+    
+    async def _maybe_auto_screenshot(self):
+        """Optionally capture screenshot for visual context based on configuration"""
+        if not ENABLE_VISUAL_CONTEXT:
+            logger.debug("Visual context capturing is disabled")
+            return
+            
+        # Check if auto-screenshot is enabled and we've hit the interval
+        if AUTO_SCREENSHOT_INTERVAL > 0 and self._tool_call_count % AUTO_SCREENSHOT_INTERVAL == 0:
+            try:
+                logger.info(f"📸 Auto-capturing screenshot (tool call #{self._tool_call_count})")
+                
+                # Execute screenshot tool to get visual context
+                screenshot_result = await self._execute_tool("take_screenshot", {
+                    "format": "png",
+                    "fullPage": False
+                })
+                
+                # Images are automatically detected and added to _pending_images in _execute_tool
+                logger.debug(f"Auto-screenshot captured, pending images: {len(self._pending_images)}")
+                
+            except Exception as e:
+                logger.warning(f"Auto-screenshot failed: {e}")
         
     async def initialize(self):
         """Initialize Gemini client and MCP connection"""
@@ -226,16 +282,42 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
             
             # Execute tool via MCP
             result = await self.mcp_session.call_tool(tool_name, arguments)
-            
-            # Extract content from result
-            if hasattr(result, 'content') and result.content:
-                content = result.content[0]
-                if hasattr(content, 'text'):
-                    return {"result": content.text, "success": True}
+
+            # Normalize and preserve structured result for caller
+            # MCP tool implementations often return a list of dicts; preserve that
+            try:
+                # If result has attribute 'content' (ClientSession wrapper), convert
+                if hasattr(result, 'content') and result.content:
+                    # content is usually a list-like of parts; attempt to extract python objects
+                    raw = []
+                    for c in result.content:
+                        # try to use text field if present
+                        if hasattr(c, 'text') and c.text is not None:
+                            raw.append({"type": "text", "text": c.text})
+                        else:
+                            raw.append(c)
+                    tool_out = raw
                 else:
-                    return {"result": str(content), "success": True}
-            else:
-                return {"result": str(result), "success": True}
+                    tool_out = result
+            except Exception:
+                tool_out = result
+
+            # If the tool returned a list/dict that includes image data (from take_screenshot),
+            # detect and store in pending images for the next LLM call but still return text result.
+            try:
+                # normalize to list
+                items = tool_out if isinstance(tool_out, list) else [tool_out]
+                for item in items:
+                    if isinstance(item, dict) and item.get("type") == "image" and item.get("data"):
+                        img_base64 = item.get("data")
+                        mime = item.get("mimeType") or item.get("mime_type") or "image/png"
+                        self._pending_images.append({"data": img_base64, "mime": mime, "source_tool": tool_name})
+            except Exception:
+                # don't let image extraction break the tool result
+                pass
+
+            # Return a stable JSON-serializable representation
+            return {"result": tool_out, "success": True}
                 
         except Exception as e:
             logger.error(f"Tool execution failed for {tool_name}: {e}")
@@ -282,6 +364,18 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
                 contents = []
                 system_instruction = None
                 first_user_msg = True
+
+                # If visual context is enabled and there are pending images, prepend them as parts
+                if ENABLE_VISUAL_CONTEXT and self._pending_images:
+                    for img in self._pending_images:
+                        try:
+                            img_bytes = self._decode_base64_image(img["data"])
+                            if img_bytes and len(img_bytes) <= MAX_IMAGE_BYTES:
+                                contents.append(types.Part.from_bytes(data=img_bytes, mime_type=img["mime"]))
+                        except Exception as e:
+                            logger.warning(f"Failed to attach image from {img.get('source_tool')}: {e}")
+                    # clear pending images after attaching
+                    self._pending_images = []
                 
                 for msg in self.messages:
                     if msg["role"] == "system":
@@ -312,13 +406,18 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
                         if parts:
                             contents.append(types.Content(role="model", parts=parts))
                     elif msg["role"] == "tool":
-                        # Add tool response
+                        # Add tool response. Try to preserve structured JSON if available
+                        try:
+                            parsed = json.loads(msg.get("content") or "null")
+                        except Exception:
+                            parsed = msg.get("content")
+
                         contents.append(types.Content(
-                            role="function", 
+                            role="function",
                             parts=[types.Part(
                                 function_response=types.FunctionResponse(
                                     name=msg["name"],
-                                    response={"result": msg["content"]}
+                                    response={"result": parsed}
                                 )
                             )]
                         ))
@@ -384,6 +483,12 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
                             "name": func_name,
                             "content": json.dumps(tool_result)
                         })
+                        
+                        # Increment tool call count for auto-screenshot logic
+                        self._tool_call_count += 1
+                        
+                    # Optional: Auto-capture screenshot for visual context
+                    await self._maybe_auto_screenshot()
                         
                     # Continue loop to send updated messages back to LLM
                     continue
