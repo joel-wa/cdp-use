@@ -2501,21 +2501,49 @@ class WorkflowEnhancedConversationalOrchestrator:
             raise
     
     async def _get_enhanced_context(self, user_input: str) -> Optional[str]:
-        """Get enhanced context information"""
+        """Get enhanced context information including visual and interactive context"""
+        context_parts = []
+        
         try:
             # Check if this is a workflow command
             if user_input.strip().startswith("workflow"):
                 return None  # Workflow commands don't need visual context
                 
-            # Get visual context if enabled and relevant
+            # Get visual context if enabled and likely needed
             if ENABLE_VISUAL_CONTEXT and any(keyword in user_input.lower() 
-                                           for keyword in ["see", "show", "what", "screenshot", "page"]):
-                return "Visual context would be helpful for this request"
+                                           for keyword in ["see", "show", "what", "screenshot", "page", "website", "click", "element"]):
+                try:
+                    # Try to get screenshot first
+                    screenshot_result = await self.mcp_session.call_tool("take_screenshot", {})
+                    if screenshot_result and hasattr(screenshot_result, 'content'):
+                        context_parts.append("📸 Current page screenshot captured")
+                        
+                        # Also get interactive elements if enabled
+                        if ENABLE_INTERACTIVE_CONTEXT:
+                            try:
+                                elements_result = await self.mcp_session.call_tool("get_interactive_elements", {})
+                                if elements_result and hasattr(elements_result, 'content'):
+                                    context_parts.append("🎯 Interactive elements mapped")
+                            except Exception as e:
+                                logger.debug(f"Could not get interactive elements: {e}")
+                                
+                except Exception as e:
+                    logger.debug(f"Could not get screenshot: {e}")
+                    context_parts.append("📋 Visual context requested but screenshot unavailable")
+                    
+            # Add browser state context if available
+            if self.system_state.browser_state.get("current_url"):
+                context_parts.append(f"🌐 Current page: {self.system_state.browser_state['current_url']}")
                 
+            # Add file system context if relevant
+            if any(keyword in user_input.lower() for keyword in ["file", "directory", "folder", "read", "write"]):
+                if self.system_state.current_directory:
+                    context_parts.append(f"📁 Working directory: {self.system_state.current_directory}")
+                    
         except Exception as e:
             logger.warning(f"Error getting enhanced context: {e}")
             
-        return None
+        return "\n".join(context_parts) if context_parts else None
             
     async def _get_context_with_fallback(self, user_input) -> tuple[Optional[str], str]:
         """Get context with fallback handling"""
@@ -2547,136 +2575,182 @@ class WorkflowEnhancedConversationalOrchestrator:
         return gemini_tools
         
     async def process_user_input(self, user_input: str) -> str:
-        """Process user input with workflow support"""
+        """
+        Enhanced conversational loop with workflow support:
+        
+        1. Enhanced context gathering
+        2. Sequential tool execution with iterative conversation loop
+        3. Intelligent error recovery
+        4. Progressive responses
+        5. Context optimization
+        6. Workflow learning and suggestion capabilities
+        """
         
         # Handle workflow commands first
         if user_input.strip().startswith("workflow"):
             return await self.workflow_cli.process_workflow_command(user_input.strip())
         
-        # Check for workflow suggestions if learning is enabled
-        if ENABLE_WORKFLOW_LEARNING and AUTO_SUGGEST_WORKFLOWS:
-            suggestions = await self.workflow_recording.auto_suggest_workflows()
-            if suggestions:
-                suggestion_text = f"\n💡 Workflow suggestion: I noticed you might be repeating similar actions. " \
-                                f"Type 'workflow suggest' to see automation opportunities."
+        # Step 1: Enhance user input with context
+        context = await self._get_enhanced_context(user_input)
         
-        # Add user message to conversation
-        self.messages.append({"role": "user", "content": user_input})
+        if context:
+            enhanced_input = f"{context}\n\nUser: {user_input}"
+            logger.info("🔗 Enhanced context included")
+        else:
+            enhanced_input = user_input
+            logger.warning("⚠️ No context available")
+            
+        self.messages.append({
+            "role": "user",
+            "content": enhanced_input
+        })
         
-        # Get enhanced context
-        context, context_desc = await self._get_context_with_fallback(user_input)
-        
-        # Optimize context if needed
+        # Step 2: Optimize context if needed
         self.messages = self.context_manager.optimize_context(self.messages)
         
-        try:
-            # Create Gemini contents
-            contents = self._create_gemini_contents()
+        logger.info(f"📝 User input processed (messages: {len(self.messages)})")
+        
+        # Core enhanced conversation loop (critical for multi-step execution)
+        max_iterations = 10
+        iteration = 0
+        
+        while iteration < max_iterations:
+            iteration += 1
+            logger.debug(f"🔄 Enhanced conversation loop iteration {iteration}")
             
-            # Convert tools for Gemini
-            tools = self._convert_tools_to_gemini_format()
-            
-            # Configure generation
-            config = types.GenerateContentConfig(
-                tools=tools,
-                temperature=0.1,
-                max_output_tokens=8192
-            )
-            
-            # Log the enhanced prompt
-            self._log_enhanced_prompt(contents, config)
-            
-            # Generate response
-            logger.info("🤖 Generating response with Gemini...")
-            response = await self.genai_client.aio.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=contents,
-                config=config
-            )
-            
-            # Process response
-            if response.candidates and response.candidates[0].content:
-                content = response.candidates[0].content
+            try:
+                # Prepare tools and config
+                tools = self._convert_tools_to_gemini_format()
                 
-                # Extract text content
-                text_content = ""
-                if content.parts:
-                    for part in content.parts:
-                        if hasattr(part, 'text') and part.text:
-                            text_content += part.text
+                config = types.GenerateContentConfig(
+                    tools=tools if tools else None,
+                    temperature=0.7,  # Slightly lower for more consistent behavior
+                    max_output_tokens=2048,
+                )
                 
-                # Extract and execute function calls
-                function_calls = []
-                if content.parts:
-                    for part in content.parts:
-                        if hasattr(part, 'function_call') and part.function_call:
-                            function_calls.append({
-                                "function": {
-                                    "name": part.function_call.name,
-                                    "arguments": dict(part.function_call.args) if part.function_call.args else {}
-                                }
-                            })
+                # Create optimized content from messages  
+                contents = self._create_gemini_contents()
                 
-                # Add assistant message
-                if text_content:
-                    self.messages.append({"role": "assistant", "content": text_content})
+                # Log final prompt for debugging
+                if DEBUG:
+                    self._log_enhanced_prompt(contents, config)
                 
-                # Execute tools if present
-                if function_calls:
-                    logger.info(f"🔧 Executing {len(function_calls)} tool call(s)")
+                # Generate response
+                response = await self.genai_client.aio.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=contents,
+                    config=config
+                )
+                
+                # Process response
+                if not response.candidates or not response.candidates[0].content:
+                    logger.error("No response generated from Gemini")
+                    return "Error: No response generated"
+                
+                candidate = response.candidates[0]
+                content = candidate.content
+                
+                # Extract tool calls and assistant content
+                tool_calls = []
+                assistant_content = ""
+                
+                for part in content.parts:
+                    if hasattr(part, 'text') and part.text:
+                        assistant_content += part.text
+                    elif hasattr(part, 'function_call') and part.function_call:
+                        func_call = part.function_call
+                        tool_calls.append({
+                            "id": f"call_{iteration}_{func_call.name}",
+                            "type": "function", 
+                            "function": {
+                                "name": func_call.name,
+                                "arguments": dict(func_call.args) if func_call.args else {}
+                            }
+                        })
+                
+                # Add assistant response to messages
+                assistant_msg = {"role": "assistant"}
+                if assistant_content:
+                    assistant_msg["content"] = assistant_content
+                if tool_calls:
+                    assistant_msg["tool_calls"] = tool_calls
                     
-                    tool_results = await self.tool_orchestrator.execute_tool_chain_sequentially(function_calls)
+                self.messages.append(assistant_msg)
+                
+                # Execute tool calls if present (enhanced sequential execution)
+                if tool_calls:
+                    logger.info(f"🔧 Executing {len(tool_calls)} tool call(s) sequentially")
                     
-                    # Add tool results to conversation
-                    for i, result in enumerate(tool_results):
-                        if result.result:
-                            self.messages.append({
-                                "role": "tool",
-                                "name": result.tool_name,
-                                "content": result.result
-                            })
+                    # Execute with enhanced orchestrator
+                    execution_results = await self.tool_orchestrator.execute_tool_chain_sequentially(tool_calls)
                     
-                    # Generate follow-up response
-                    if any(r.status == ToolExecutionStatus.COMPLETED for r in tool_results):
-                        # Create new contents with updated context
-                        updated_contents = self._create_gemini_contents()
+                    # Record executions for workflow learning
+                    if self.workflow_recording.is_recording():
+                        for result in execution_results:
+                            self.workflow_recording.current_session.add_tool_execution(result)
+                    
+                    # Add tool results to messages
+                    for i, result in enumerate(execution_results):
+                        tool_call = tool_calls[i]
                         
-                        follow_up_response = await self.genai_client.agenerate_content(
-                            contents=updated_contents,
-                            config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=4096)
-                        )
+                        self.messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call["id"],
+                            "name": result.tool_name,
+                            "content": json.dumps({
+                                "result": result.result,
+                                "success": result.status == ToolExecutionStatus.COMPLETED,
+                                "error": result.error,
+                                "execution_time": result.execution_time,
+                                "retry_count": result.retry_count
+                            })
+                        })
                         
-                        if follow_up_response.candidates and follow_up_response.candidates[0].content:
-                            follow_up_content = follow_up_response.candidates[0].content
-                            follow_up_text = ""
-                            
-                            if follow_up_content.parts:
-                                for part in follow_up_content.parts:
-                                    if hasattr(part, 'text') and part.text:
-                                        follow_up_text += part.text
-                            
-                            if follow_up_text:
-                                self.messages.append({"role": "assistant", "content": follow_up_text})
-                                text_content = follow_up_text
+                    self._tool_call_count += len(tool_calls)
+                    
+                    # Get updated context after tool execution  
+                    post_tool_context = await self._get_enhanced_context("Tools executed, analyzing current state...")
+                    
+                    if post_tool_context:
+                        self.messages.append({
+                            "role": "user",
+                            "content": f"{post_tool_context}\n\n[Tools executed successfully. Please continue based on the current state.]"
+                        })
+                        logger.info("🔄 Post-tool context captured")
+                    
+                    # Continue loop for next iteration (CRITICAL: this keeps the conversation going)
+                    continue
+                else:
+                    # No tool calls - final response
+                    logger.info(f"✅ Enhanced response generated (iteration {iteration})")
+                    
+                    # Check for workflow suggestions before returning
+                    suggestion_text = ""
+                    if ENABLE_WORKFLOW_LEARNING and len(self.system_state.tool_execution_history) >= WORKFLOW_PATTERN_MIN_LENGTH:
+                        if any(r.status == ToolExecutionStatus.COMPLETED for r in self.system_state.tool_execution_history[-3:]):
+                            suggestions = await self.workflow_recording.auto_suggest_workflows()
+                            if suggestions and len(suggestions) > 0 and suggestions[0].confidence_score > 0.8:
+                                suggestion_text = f"\n\n💡 **Workflow Suggestion**: I detected a repeatable pattern in your recent actions. " \
+                                                f"Would you like me to save this as a workflow? Type `workflow record start` to begin capturing patterns."
+                    
+                    return (assistant_content or "Response completed (no text content)") + suggestion_text
+                    
+            except Exception as e:
+                logger.error(f"Error in enhanced conversation loop iteration {iteration}: {e}")
                 
-                # Check for workflow suggestions
-                suggestion_text = ""
-                if ENABLE_WORKFLOW_LEARNING and len(self.system_state.tool_execution_history) >= WORKFLOW_PATTERN_MIN_LENGTH:
-                    if any(r.status == ToolExecutionStatus.COMPLETED for r in self.system_state.tool_execution_history[-3:]):
-                        suggestions = await self.workflow_recording.auto_suggest_workflows()
-                        if suggestions and suggestions[0].confidence_score > 0.8:
-                            suggestion_text = f"\n\n💡 **Workflow Suggestion**: I detected a repeatable pattern in your recent actions. " \
-                                            f"Would you like me to save this as a workflow? Type `workflow record start` to begin capturing patterns."
-                
-                return (text_content or "I've completed the requested actions.") + suggestion_text
-                
-            else:
-                return "I apologize, but I couldn't generate a proper response. Please try again."
-                
-        except Exception as e:
-            logger.error(f"❌ Error processing user input: {e}")
-            logger.error(traceback.format_exc())
-            return f"I encountered an error while processing your request: {str(e)}. Please try again or rephrase your request."
+                # Enhanced error handling
+                if ENABLE_ERROR_RECOVERY and iteration < max_iterations - 1:
+                    self.messages.append({
+                        "role": "user",
+                        "content": f"An error occurred: {str(e)}. Please try a different approach or break down the task into smaller steps."
+                    })
+                    continue
+                else:
+                    return f"Error: {str(e)}"
+                    
+        # Safety limit reached
+        logger.warning(f"Reached maximum iterations ({max_iterations})")
+        return "Response completed (reached iteration limit)"
         
     def _create_gemini_contents(self) -> List[types.Content]:
         """Create Gemini contents from conversation messages"""
