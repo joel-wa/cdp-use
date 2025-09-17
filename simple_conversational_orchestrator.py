@@ -256,8 +256,8 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
                 
                 context_parts.append(elem_desc)
             
-            # if len(elements_data["elements"]) > 15:
-            #     context_parts.append(f"  ... and {len(elements_data['elements']) - 15} more elements")
+            if len(elements_data["elements"]) > 15:
+                context_parts.append(f"  ... and {len(elements_data['elements']) - 15} more elements")
                 
             context_parts.append("]")
             
@@ -444,6 +444,60 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
         except Exception as e:
             logger.error(f"Tool execution failed for {tool_name}: {e}")
             return {"error": str(e), "success": False}
+    
+    def _log_final_prompt(self, contents: List[types.Content], config: types.GenerateContentConfig) -> None:
+        """Log the final prompt being sent to the LLM"""
+        try:
+            logger.info("🤖 FINAL PROMPT TO LLM:")
+            logger.info("=" * 80)
+            
+            # Log model and config
+            logger.info(f"Model: {GEMINI_MODEL}")
+            logger.info(f"Temperature: {config.temperature}")
+            logger.info(f"Max Output Tokens: {config.max_output_tokens}")
+            
+            # Log available tools
+            if config.tools:
+                tool_names = []
+                for tool in config.tools:
+                    if hasattr(tool, 'function_declarations'):
+                        tool_names.extend([f.name for f in tool.function_declarations])
+                logger.info(f"Available Tools: {', '.join(tool_names)}")
+            else:
+                logger.info("Available Tools: None")
+            
+            logger.info("-" * 80)
+            
+            # Log conversation contents
+            for i, content in enumerate(contents):
+                role = content.role
+                logger.info(f"[{i+1}] Role: {role}")
+                
+                for j, part in enumerate(content.parts):
+                    if hasattr(part, 'text') and part.text:
+                        # Truncate very long text for readability
+                        text = part.text
+                        if len(text) > 1000:
+                            text = text[:1000] + "... [TRUNCATED]"
+                        logger.info(f"  Part {j+1} (text): {text}")
+                    elif hasattr(part, 'function_call') and part.function_call:
+                        func_call = part.function_call
+                        logger.info(f"  Part {j+1} (function_call): {func_call.name}({dict(func_call.args) if func_call.args else {}})")
+                    elif hasattr(part, 'function_response') and part.function_response:
+                        func_response = part.function_response
+                        response_text = str(func_response.response)
+                        if len(response_text) > 500:
+                            response_text = response_text[:500] + "... [TRUNCATED]"
+                        logger.info(f"  Part {j+1} (function_response): {func_response.name} -> {response_text}")
+                    else:
+                        logger.info(f"  Part {j+1} (unknown): {type(part)}")
+                
+                logger.info("")
+            
+            logger.info("=" * 80)
+            
+        except Exception as e:
+            logger.error(f"Failed to log final prompt: {e}")
             
     async def process_user_input(self, user_input: str) -> str:
         """
@@ -554,6 +608,9 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
                                 )
                             )]
                         ))
+                
+                # Log the final prompt being sent to LLM
+                self._log_final_prompt(contents, config)
                 
                 # Generate response
                 response = await self.genai_client.aio.models.generate_content(
