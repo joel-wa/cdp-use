@@ -2447,8 +2447,19 @@ class WorkflowEnhancedConversationalOrchestrator:
             
     async def _connect_stdio_transport(self):
         """Connect using stdio transport"""
+        import shlex
+        
+        if isinstance(MCP_SERVER_COMMAND, str):
+            cmd_parts = shlex.split(MCP_SERVER_COMMAND)
+        else:
+            cmd_parts = MCP_SERVER_COMMAND
+            
+        command = cmd_parts[0] if cmd_parts else "python"
+        args = cmd_parts[1:] if len(cmd_parts) > 1 else []
+        
         server_params = StdioServerParameters(
-            command=MCP_SERVER_COMMAND.split(),
+            command=command,
+            args=args,
             env=None
         )
         
@@ -2577,7 +2588,8 @@ class WorkflowEnhancedConversationalOrchestrator:
             
             # Generate response
             logger.info("🤖 Generating response with Gemini...")
-            response = await self.genai_client.agenerate_content(
+            response = await self.genai_client.aio.models.generate_content(
+                model=GEMINI_MODEL,
                 contents=contents,
                 config=config
             )
