@@ -18,9 +18,10 @@ import sys
 from datetime import datetime
 
 # Add parent directories to path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from LLMOrchestration.gemini_mcp_orchestrator import GeminiMCPOrchestrator
+from enhanced_conversational_orchestrator import EnhancedConversationalOrchestrator
 
 # Setup logging
 logging.basicConfig(
@@ -41,9 +42,9 @@ class OrchestratorWebUI:
         
     async def initialize(self):
         """Initialize the orchestrator"""
-        self.orchestrator = GeminiMCPOrchestrator()
+        self.orchestrator = EnhancedConversationalOrchestrator()
         await self.orchestrator.initialize()
-        logger.info("✅ Orchestrator Web UI initialized")
+        logger.info("✅ Enhanced Orchestrator Web UI initialized")
     
     async def execute_goal_with_ui(self, goal: str, websocket: WebSocket):
         """Execute goal with real-time UI updates"""
@@ -59,8 +60,11 @@ class OrchestratorWebUI:
                 }
             })
             
-            # Create a custom orchestrator that sends updates
-            result = await self.run_goal_with_updates(goal, websocket)
+            # Create enhanced orchestrator execution with UI updates
+            result = await self.run_enhanced_goal_with_updates(goal, websocket)
+            
+            # Take final screenshot at goal completion
+            await self.take_final_screenshot(websocket)
             
             await self.send_message(websocket, {
                 "type": "status",
@@ -84,126 +88,166 @@ class OrchestratorWebUI:
                 }
             })
     
-    async def run_goal_with_updates(self, goal: str, websocket: WebSocket):
-        """Run orchestrator with real-time updates"""
+    async def run_enhanced_goal_with_updates(self, goal: str, websocket: WebSocket):
+        """Run enhanced orchestrator with real-time updates"""
         try:
-            logger.info(f"🔄 Starting run_goal_with_updates for: {goal}")
+            logger.info(f"🔄 Starting enhanced goal execution for: {goal}")
             
-            # Initialize context
-            context = {"input": goal}
-            iteration = 0
-            max_iterations = 10
-            
-            while iteration < max_iterations:
-                iteration += 1
-                logger.info(f"🔄 Starting iteration {iteration}")
-                
-                await self.send_message(websocket, {
-                    "type": "cycle_start",
-                    "data": {
-                        "cycle": iteration,
-                        "message": f"🔄 Orchestrator iteration {iteration}",
-                        "timestamp": datetime.now().isoformat()
-                    }
-                })
-                
-                # Execute each role with updates
-                for role in ["planner", "executor",
-                            #   "critic", 
-                              "reviewer"]:
-                    logger.info(f"▶️ Executing role: {role}")
-                    
-                    await self.send_message(websocket, {
-                        "type": "role_start",
-                        "data": {
-                            "role": role,
-                            "cycle": iteration,
-                            "message": f"▶️ Executing role: {role}",
-                            "timestamp": datetime.now().isoformat()
-                        }
-                    })
-                    
-                    # Execute the role
-                    try:
-                        if role == "planner":
-                            output = await self.orchestrator._planner_role(context)
-                        elif role == "executor":
-                            output = await self.orchestrator._executor_role(context)
-                        elif role == "critic":
-                            output = await self.orchestrator._critic_role(context)
-                        elif role == "reviewer":
-                            output = await self.orchestrator._reviewer_role(context)
-                        
-                        logger.info(f"✅ {role} output: {output}")
-                        context[role] = output
-                        
-                        await self.send_message(websocket, {
-                            "type": "role_complete",
-                            "data": {
-                                "role": role,
-                                "cycle": iteration,
-                                "output": output,
-                                "message": f"✅ {role.title()} completed",
-                                "timestamp": datetime.now().isoformat()
-                            }
-                        })
-                        
-                        # Check for stop sequence immediately after each role
-                        if self.orchestrator.orchestrator._contains_stop_sequence(output):
-                            logger.info(f"🎯 GOAL ACHIEVED! Stop sequence found in {role}")
-                            await self.send_message(websocket, {
-                                "type": "goal_achieved",
-                                "data": {
-                                    "role": role,
-                                    "cycle": iteration,
-                                    "message": f"🎯 GOAL ACHIEVED! Stop sequence found in {role} output",
-                                    "timestamp": datetime.now().isoformat()
-                                }
-                            })
-                            context["final"] = context["reviewer"] if "reviewer" in context else output
-                            context["iterations"] = iteration
-                            return context
-                            
-                    except Exception as role_error:
-                        logger.error(f"❌ Error in {role}: {role_error}")
-                        await self.send_message(websocket, {
-                            "type": "role_error",
-                            "data": {
-                                "role": role,
-                                "cycle": iteration,
-                                "error": str(role_error),
-                                "message": f"❌ Error in {role}: {str(role_error)}",
-                                "timestamp": datetime.now().isoformat()
-                            }
-                        })
-                
-                await self.send_message(websocket, {
-                    "type": "cycle_complete",
-                    "data": {
-                        "cycle": iteration,
-                        "message": f"🔄 Iteration {iteration} complete, continuing...",
-                        "timestamp": datetime.now().isoformat()
-                    }
-                })
-            
-            # Max iterations reached
-            logger.info(f"⚠️ Maximum iterations ({max_iterations}) reached")
+            # Send initial processing message
             await self.send_message(websocket, {
-                "type": "max_iterations",
+                "type": "assistant_thinking",
                 "data": {
-                    "iterations": max_iterations,
-                    "message": f"⚠️ Maximum iterations ({max_iterations}) reached",
+                    "message": "🤖 Processing your request...",
                     "timestamp": datetime.now().isoformat()
                 }
             })
             
-            context["final"] = context.get("reviewer", {})
-            context["iterations"] = iteration
-            return context
+            # Hook into the orchestrator to monitor tool calls
+            original_tool_orchestrator = self.orchestrator.tool_orchestrator
+            if original_tool_orchestrator:
+                original_execute = original_tool_orchestrator._execute_single_tool_with_recovery
+                
+                async def monitored_execute(tool_call):
+                    # Send tool start message
+                    tool_name = tool_call["function"]["name"]
+                    await self.send_message(websocket, {
+                        "type": "tool_start",
+                        "data": {
+                            "tool_name": tool_name,
+                            "arguments": tool_call["function"]["arguments"],
+                            "message": f"🔧 Executing {tool_name}...",
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    })
+                    
+                    # Execute the tool
+                    result = await original_execute(tool_call)
+                    
+                    # Send tool completion message
+                    await self.send_message(websocket, {
+                        "type": "tool_complete",
+                        "data": {
+                            "tool_name": tool_name,
+                            "result": result.result,
+                            "success": result.status.value == "completed",
+                            "error": result.error,
+                            "execution_time": result.execution_time,
+                            "message": f"✅ {tool_name} {'completed' if result.error is None else 'failed'}",
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    })
+                    
+                    # Handle screenshot results specially
+                    await self.handle_screenshot_result(tool_name, result, websocket)
+                    
+                    return result
+                
+                # Temporarily replace the execute method
+                original_tool_orchestrator._execute_single_tool_with_recovery = monitored_execute
+            
+            # Process the user input with the enhanced orchestrator
+            result = await self.orchestrator.process_user_input(goal)
+            
+            # Send assistant response
+            await self.send_message(websocket, {
+                "type": "assistant_response",
+                "data": {
+                    "content": result,
+                    "message": "🎯 Assistant response generated",
+                    "timestamp": datetime.now().isoformat()
+                }
+            })
+            
+            # Restore original execute method
+            if original_tool_orchestrator:
+                original_tool_orchestrator._execute_single_tool_with_recovery = original_execute
+            
+            return {"result": result, "status": "completed"}
             
         except Exception as e:
-            logger.error(f"Error in goal execution: {e}")
+            logger.error(f"Error in enhanced goal execution: {e}")
+            await self.send_message(websocket, {
+                "type": "error",
+                "data": {
+                    "message": f"❌ Error during execution: {str(e)}",
+                    "timestamp": datetime.now().isoformat()
+                }
+            })
             raise
+    
+    async def handle_screenshot_result(self, tool_name: str, result, websocket: WebSocket):
+        """Handle screenshot tool results specially to display images in UI"""
+        try:
+            if tool_name == "take_screenshot" and result.result and result.error is None:
+                # Extract base64 image data from the result
+                screenshot_data = None
+                if isinstance(result.result, dict):
+                    screenshot_data = result.result.get("image_data") or result.result.get("base64_image")
+                elif isinstance(result.result, str):
+                    # Sometimes the result might be just the base64 string
+                    screenshot_data = result.result
+                
+                if screenshot_data:
+                    await self.send_message(websocket, {
+                        "type": "screenshot",
+                        "data": {
+                            "image_data": screenshot_data,
+                            "tool_name": tool_name,
+                            "message": "📸 Screenshot captured",
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    })
+                    logger.info(f"📸 Screenshot data sent to UI")
+                else:
+                    logger.warning(f"⚠️ Screenshot tool completed but no image data found")
+            
+        except Exception as e:
+            logger.error(f"Error handling screenshot result: {e}")
+    
+    async def take_final_screenshot(self, websocket: WebSocket):
+        """Take a final screenshot at the end of goal execution"""
+        try:
+            if self.orchestrator and self.orchestrator.mcp_session:
+                logger.info("📸 Taking final screenshot...")
+                
+                await self.send_message(websocket, {
+                    "type": "final_screenshot_start",
+                    "data": {
+                        "message": "📸 Taking final screenshot...",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                })
+                
+                # Create a tool call for taking screenshot
+                screenshot_tool_call = {
+                    "function": {
+                        "name": "take_screenshot",
+                        "arguments": {}
+                    }
+                }
+                
+                # Execute screenshot using the tool orchestrator
+                if self.orchestrator.tool_orchestrator:
+                    result = await self.orchestrator.tool_orchestrator._execute_single_tool_with_recovery(screenshot_tool_call)
+                    await self.handle_screenshot_result("take_screenshot", result, websocket)
+                    
+                    await self.send_message(websocket, {
+                        "type": "final_screenshot_complete",
+                        "data": {
+                            "message": "📸 Final screenshot completed",
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    })
+                    
+        except Exception as e:
+            logger.error(f"Error taking final screenshot: {e}")
+            await self.send_message(websocket, {
+                "type": "error",
+                "data": {
+                    "message": f"❌ Error taking final screenshot: {str(e)}",
+                    "timestamp": datetime.now().isoformat()
+                }
+            })
     
     async def send_message(self, websocket: WebSocket, message: Dict[str, Any]):
         """Send message to WebSocket with proper error handling"""
@@ -478,6 +522,78 @@ async def get_ui():
                 max-height: 200px;
                 overflow-y: auto;
             }
+
+            /* Screenshot-specific styles */
+            .message.screenshot .message-content {
+                border-left: 3px solid #ff6b35;
+                padding: 15px;
+            }
+
+            .message.assistant .message-content {
+                border-left: 3px solid #007acc;
+            }
+
+            .message.tool .message-content {
+                border-left: 3px solid #28a745;
+                background: #f8f9fa;
+            }
+
+            .role-badge.screenshot {
+                background: #ff6b35;
+                color: white;
+            }
+
+            .role-badge.assistant {
+                background: #007acc;
+                color: white;
+            }
+
+            .role-badge.tool {
+                background: #28a745;
+                color: white;
+            }
+
+            .screenshot-image {
+                max-width: 100%;
+                height: auto;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                margin-top: 10px;
+                cursor: pointer;
+                transition: transform 0.2s ease;
+            }
+
+            .screenshot-image:hover {
+                transform: scale(1.02);
+            }
+
+            .screenshot-message {
+                margin-bottom: 10px;
+                font-weight: 500;
+            }
+
+            /* Modal for full-size image view */
+            .screenshot-modal {
+                display: none;
+                position: fixed;
+                z-index: 1000;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0,0,0,0.8);
+                cursor: pointer;
+            }
+
+            .screenshot-modal img {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                max-width: 90%;
+                max-height: 90%;
+                border-radius: 4px;
+            }
         </style>
     </head>
     <body>
@@ -495,15 +611,16 @@ async def get_ui():
             <div class="chat-container" id="chatContainer">
                 <div class="message system">
                     <div class="message-content">
-                        🚀 Welcome to the Live LLM Orchestrator! 
+                        🚀 Welcome to the Enhanced LLM Orchestrator! 
                         
-Enter a goal below to watch the AI system plan, execute, and review its way to achieving your objective in real-time.
+Enter a goal below to watch the AI assistant intelligently plan and execute tools to achieve your objective in real-time.
 
-Each role has a specific purpose:
-• Planner: Creates strategic plans and breaks down goals
-• Executor: Performs actions and tool calls
-• Critic: Analyzes and provides feedback on execution
-• Reviewer: Synthesizes results and determines completion
+Features:
+• 🤖 Enhanced conversational AI with tool execution
+• 🔧 Real-time tool execution monitoring
+• 📸 Automatic screenshot capture and display
+• ⚡ Smart error recovery and retry logic
+• 🎯 Goal completion with final screenshot
                     </div>
                 </div>
             </div>
@@ -591,6 +708,29 @@ Each role has a specific purpose:
                         case 'status':
                             this.handleStatusMessage(data);
                             break;
+                        case 'assistant_thinking':
+                            this.handleAssistantThinking(data);
+                            break;
+                        case 'tool_start':
+                            this.handleToolStart(data);
+                            break;
+                        case 'tool_complete':
+                            this.handleToolComplete(data);
+                            break;
+                        case 'assistant_response':
+                            this.handleAssistantResponse(data);
+                            break;
+                        case 'screenshot':
+                            this.handleScreenshot(data);
+                            break;
+                        case 'final_screenshot_start':
+                        case 'final_screenshot_complete':
+                            this.handleFinalScreenshot(data);
+                            break;
+                        case 'error':
+                            this.handleError(data);
+                            break;
+                        // Legacy handlers for backward compatibility
                         case 'cycle_start':
                             this.handleCycleStart(data);
                             break;
@@ -608,9 +748,6 @@ Each role has a specific purpose:
                             break;
                         case 'goal_achieved':
                             this.handleGoalAchieved(data);
-                            break;
-                        case 'error':
-                            this.handleError(data);
                             break;
                         case 'max_iterations':
                             this.handleMaxIterations(data);
@@ -645,6 +782,44 @@ Each role has a specific purpose:
                     this.addRoleMessage(data.role, data.output, data.cycle, data.timestamp);
                 }
 
+                // New Enhanced Orchestrator Handlers
+                handleAssistantThinking(data) {
+                    this.addSystemMessage(data.message, data.timestamp);
+                }
+
+                handleToolStart(data) {
+                    this.addMessage('tool', `🔧 ${data.message}`, null, data.timestamp);
+                }
+
+                handleToolComplete(data) {
+                    const status = data.success ? '✅' : '❌';
+                    let message = `${status} ${data.tool_name} ${data.success ? 'completed' : 'failed'}`;
+                    if (data.execution_time) {
+                        message += ` (${data.execution_time.toFixed(2)}s)`;
+                    }
+                    if (data.error) {
+                        message += `: ${data.error}`;
+                    }
+                    this.addMessage('tool', message, null, data.timestamp);
+                }
+
+                handleAssistantResponse(data) {
+                    this.addMessage('assistant', data.content, null, data.timestamp);
+                }
+
+                handleScreenshot(data) {
+                    if (data.image_data) {
+                        this.addScreenshotMessage(data.image_data, data.message, data.timestamp);
+                    } else {
+                        this.addSystemMessage(`📸 Screenshot tool executed but no image data received`, data.timestamp);
+                    }
+                }
+
+                handleFinalScreenshot(data) {
+                    this.addSystemMessage(data.message, data.timestamp);
+                }
+
+                // Legacy handlers for backward compatibility
                 handleRoleError(data) {
                     this.addSystemMessage(`❌ ${data.message}`, data.timestamp);
                 }
@@ -774,6 +949,56 @@ Each role has a specific purpose:
 
                     this.chatContainer.appendChild(messageDiv);
                     this.chatContainer.scrollTop = this.chatContainer.scrollHeight;
+                }
+
+                addScreenshotMessage(imageData, message, timestamp) {
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message screenshot';
+                    
+                    const timestampStr = timestamp ? new Date(timestamp).toLocaleTimeString() : '';
+                    
+                    // Create image element
+                    const imageUrl = `data:image/png;base64,${imageData}`;
+                    const imageId = `screenshot-${Date.now()}`;
+                    
+                    messageDiv.innerHTML = `
+                        <div class="message-header">
+                            <div class="role-badge screenshot">📸 screenshot</div>
+                            <div class="timestamp">${timestampStr}</div>
+                        </div>
+                        <div class="message-content">
+                            <div class="screenshot-message">${message}</div>
+                            <img src="${imageUrl}" alt="Screenshot" class="screenshot-image" id="${imageId}" />
+                        </div>
+                    `;
+
+                    this.chatContainer.appendChild(messageDiv);
+                    
+                    // Add click handler for full-size view
+                    const img = document.getElementById(imageId);
+                    img.addEventListener('click', () => this.showFullSizeImage(imageUrl));
+                    
+                    this.chatContainer.scrollTop = this.chatContainer.scrollHeight;
+                }
+
+                showFullSizeImage(imageUrl) {
+                    // Create modal if it doesn't exist
+                    let modal = document.getElementById('screenshot-modal');
+                    if (!modal) {
+                        modal = document.createElement('div');
+                        modal.id = 'screenshot-modal';
+                        modal.className = 'screenshot-modal';
+                        modal.innerHTML = '<img src="" alt="Full-size screenshot" />';
+                        document.body.appendChild(modal);
+                        
+                        modal.addEventListener('click', () => {
+                            modal.style.display = 'none';
+                        });
+                    }
+                    
+                    // Show the modal with the image
+                    modal.querySelector('img').src = imageUrl;
+                    modal.style.display = 'block';
                 }
 
                 addGoalAchievedMessage() {
