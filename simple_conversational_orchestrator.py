@@ -167,7 +167,7 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
             # Send to Gemini for description
             contents = [
                 types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
-                types.Part(text="Describe what you see in this browser screenshot. Focus on the main content, UI elements, and current state. Keep it concise but informative.")
+                types.Part(text="Describe what you see in this browser screenshot. Focus on the main content, UI elements, and current state. Keep it concise but informative such that a blind person knows what is being shown and can make decisions.")
             ]
             
             response = await self.genai_client.aio.models.generate_content(
@@ -457,11 +457,11 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
         """
         
         # Step 1: Add user input to messages array
-        # First, get visual context if enabled
-        visual_context = await self._get_visual_context_description()
-        
         # Get interactive elements context
         interactive_context = await self._get_interactive_elements_context()
+        # Then, get visual context if enabled
+        visual_context = await self._get_visual_context_description()
+        
         
         # Enhance user input with context
         enhanced_input = user_input
@@ -498,7 +498,7 @@ Be helpful, efficient, and proactive in assisting the user with their browser an
                 
                 config = types.GenerateContentConfig(
                     tools=tools if tools else None,
-                    temperature=0.7,
+                    temperature=0.8,
                     max_output_tokens=2048,
                 )
                 
