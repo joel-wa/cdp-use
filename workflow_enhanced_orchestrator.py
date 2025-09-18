@@ -62,6 +62,7 @@ ENABLE_VISUAL_CONTEXT = os.getenv("ENABLE_VISUAL_CONTEXT", "true").lower() == "t
 ENABLE_INTERACTIVE_CONTEXT = os.getenv("ENABLE_INTERACTIVE_CONTEXT", "true").lower() == "true"
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(1024 * 1024)))  # 1MB
 AUTO_SCREENSHOT_INTERVAL = int(os.getenv("AUTO_SCREENSHOT_INTERVAL", "0"))
+MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "20"))
 
 # Enhanced configuration options
 MAX_CONTEXT_TOKENS = int(os.getenv("MAX_CONTEXT_TOKENS", "100000"))
@@ -2611,7 +2612,7 @@ class WorkflowEnhancedConversationalOrchestrator:
         logger.info(f"📝 User input processed (messages: {len(self.messages)})")
         
         # Core enhanced conversation loop (critical for multi-step execution)
-        max_iterations = 10
+        max_iterations = MAX_ITERATIONS
         iteration = 0
         
         while iteration < max_iterations:
