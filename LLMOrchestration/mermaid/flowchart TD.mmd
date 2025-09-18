@@ -1,0 +1,44 @@
+flowchart TD
+    Goal["🎯 User Goal: Go from A to D"]
+    
+    subgraph "Cycle 1: A → B"
+        P1["🧠 Planner<br/>• Analyze current state (A)<br/>• Decide: 'Navigate to B'<br/>• Tools: browser_navigate"]
+        E1["⚡ Executor<br/>• Call MCP tool: browser_navigate<br/>• Navigate to URL B<br/>• Return results"]
+        C1["🔍 Critic<br/>• Analyze navigation success<br/>• Check for errors/issues<br/>• Assess page load"]
+        R1["📊 Reviewer<br/>• Check if at B successfully<br/>• Status: in_progress<br/>• Next: Continue to C"]
+        
+        P1 --> E1 --> C1 --> R1
+    end
+    
+    subgraph "Cycle 2: B → C"
+        P2["🧠 Planner<br/>• Current state: at B<br/>• Decide: 'Navigate to C'<br/>• Tools: browser_navigate"]
+        E2["⚡ Executor<br/>• Call MCP tool: browser_navigate<br/>• Navigate to URL C<br/>• Return results"]
+        C2["🔍 Critic<br/>• Analyze navigation success<br/>• Check for errors/issues<br/>• Assess page load"]
+        R2["📊 Reviewer<br/>• Check if at C successfully<br/>• Status: in_progress<br/>• Next: Continue to D"]
+        
+        P2 --> E2 --> C2 --> R2
+    end
+    
+    subgraph "Cycle 3: C → D"
+        P3["🧠 Planner<br/>• Current state: at C<br/>• Decide: 'Navigate to D'<br/>• Tools: browser_navigate"]
+        E3["⚡ Executor<br/>• Call MCP tool: browser_navigate<br/>• Navigate to URL D<br/>• Return results"]
+        C3["🔍 Critic<br/>• Analyze navigation success<br/>• Check for errors/issues<br/>• Assess page load"]
+        R3["📊 Reviewer<br/>• Check if at D successfully<br/>• Status: achieved<br/>• Include 'goal_achieved'"]
+        
+        P3 --> E3 --> C3 --> R3
+    end
+    
+    Goal --> P1
+    R1 --> P2
+    R2 --> P3
+    R3 --> Done["✅ Goal Complete<br/>Successfully navigated A → D"]
+    
+    classDef planner fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef executor fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef critic fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef reviewer fill:#e8f5e8,stroke:#2e7d32,stroke-width:2px
+    
+    class P1,P2,P3 planner
+    class E1,E2,E3 executor
+    class C1,C2,C3 critic
+    class R1,R2,R3 reviewer

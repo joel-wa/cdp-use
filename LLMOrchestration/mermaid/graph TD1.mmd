@@ -1,0 +1,35 @@
+graph TD
+    A[User Goal] --> B[Planner Role]
+    
+    B --> C[🔧 Take Screenshot]
+    C --> D[📤 Upload to Gemini Files API]
+    D --> E[🧠 Plan Next Action with Visual Context]
+    
+    E --> F[Executor Role]
+    F --> G[🖼️ Receive Screenshot Context]
+    G --> H[⚡ Execute Action with Visual Understanding]
+    
+    H --> I[Critic Role]
+    I --> J[📊 Analyze Results]
+    
+    J --> K[Reviewer Role]
+    K --> L{Goal Achieved?}
+    
+    L -->|No| M[🔄 Next Iteration]
+    L -->|Yes| N[✅ Success]
+    
+    M --> B
+    
+    subgraph "Enhanced Visual Context Flow"
+        O[Current Page State] --> C
+        C --> P[Screenshot File]
+        P --> D
+        D --> Q[Gemini File URI]
+        Q --> E
+        Q --> G
+    end
+    
+    style C fill:#e1f5fe
+    style D fill:#e8f5e8
+    style E fill:#fff3e0
+    style G fill:#fff3e0

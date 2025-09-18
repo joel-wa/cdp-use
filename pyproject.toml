@@ -5,7 +5,11 @@ description = "Type safe generator/client library for CDP"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.116.1",
+    "google-genai>=1.37.0",
     "httpx>=0.28.1",
+    "mcp[cli]>=1.14.0",
+    "pyyaml>=6.0.2",
     "websockets>=15.0.1",
 ]
 

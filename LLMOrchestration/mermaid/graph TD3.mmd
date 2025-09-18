@@ -1,0 +1,44 @@
+graph TD
+    A[Current State] --> B[Problem Analysis]
+    B --> C[Solution Strategy]
+    C --> D[Implementation Plan]
+    
+    subgraph "Current Issues"
+        E[Only executor_role uses Gemini API]
+        F[Other roles use mock responses]
+        G[Planner cannot signal completion]
+    end
+    
+    subgraph "Solution Approach"
+        H[Update all roles to use Gemini API]
+        I[Add LLM wrapper methods for each role]
+        J[Enhance planner with stop_sequence support]
+        K[Maintain consistent JSON response format]
+    end
+    
+    subgraph "Implementation Steps"
+        L[1. Update planner_role]
+        M[2. Update critic_role]
+        N[3. Update reviewer_role]
+        O[4. Add LLM helper methods]
+        P[5. Test integration]
+    end
+    
+    B --> E
+    B --> F
+    B --> G
+    
+    C --> H
+    C --> I
+    C --> J
+    C --> K
+    
+    D --> L
+    D --> M
+    D --> N
+    D --> O
+    D --> P
+    
+    style A fill:#e1f5fe
+    style C fill:#f3e5f5
+    style D fill:#e8f5e8

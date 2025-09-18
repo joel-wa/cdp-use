@@ -1,0 +1,122 @@
+name: "web_page_analysis"
+version: "1.0"
+description: "Analyze a web page by taking screenshot and extracting key information"
+author: "agent_learning"
+created_at: "2025-01-17T10:30:00Z"
+
+parameters:
+  - name: "target_url"
+    type: "string"
+    required: true
+    description: "URL of the web page to analyze"
+    validation:
+      pattern: "^https?://.+"
+  - name: "include_screenshot"
+    type: "boolean"
+    required: false
+    default: true
+    description: "Whether to take a screenshot of the page"
+  - name: "extract_links"
+    type: "boolean"
+    required: false
+    default: false
+    description: "Whether to extract all links from the page"
+
+steps:
+  - id: "navigate_to_page"
+    tool: "navigate"
+    description: "Navigate to the target URL"
+    parameters:
+      url: "{{target_url}}"
+    retry_policy:
+      max_attempts: 3
+      backoff_strategy: "exponential"
+      initial_delay: 1.0
+      max_delay: 10.0
+    validation:
+      success_condition: "true"
+      timeout_seconds: 30
+
+  - id: "take_screenshot"
+    tool: "take_screenshot"
+    description: "Capture a screenshot of the page"
+    depends_on: ["navigate_to_page"]
+    conditional: "{{include_screenshot}} == true"
+    parameters: {}
+    retry_policy:
+      max_attempts: 2
+      backoff_strategy: "fixed"
+      initial_delay: 2.0
+
+  - id: "get_page_content"
+    tool: "get_page_content"
+    description: "Extract the main page content"
+    depends_on: ["navigate_to_page"]
+    parameters:
+      human_readable: true
+    retry_policy:
+      max_attempts: 2
+      backoff_strategy: "linear"
+
+  - id: "extract_page_info"
+    tool: "execute_javascript"
+    description: "Extract key page information using JavaScript"
+    depends_on: ["get_page_content"]
+    parameters:
+      expression: |
+        const pageInfo = {
+          title: document.title,
+          url: window.location.href,
+          description: document.querySelector('meta[name="description"]')?.content || '',
+          headings: Array.from(document.querySelectorAll('h1, h2, h3')).map(h => ({
+            tag: h.tagName.toLowerCase(),
+            text: h.textContent.trim()
+          })).slice(0, 10),
+          wordCount: document.body.textContent.trim().split(/\s+/).length,
+          images: Array.from(document.querySelectorAll('img')).length,
+          links: {{extract_links}} ? Array.from(document.querySelectorAll('a[href]')).map(a => ({
+            text: a.textContent.trim(),
+            href: a.href
+          })).slice(0, 20) : []
+        };
+        return pageInfo;
+    validation:
+      success_condition: "typeof result === 'object' && result.title"
+      timeout_seconds: 15
+
+error_handling:
+  global_retry_limit: 3
+  timeout_seconds: 120
+  continue_on_error: false
+  recovery_strategies:
+    - condition: "error.type == 'NavigationTimeout'"
+      action: "retry_with_delay"
+      delay_seconds: 5
+    - condition: "error.type == 'JavaScriptError'"
+      action: "skip_step"
+
+outputs:
+  - name: "page_analysis"
+    source: "extract_page_info.result"
+    format: "json"
+    transformation: null
+  - name: "page_content"
+    source: "get_page_content.result"
+    format: "text"
+  - name: "screenshot_taken"
+    source: "take_screenshot.result"
+    format: "json"
+  - name: "execution_summary"
+    source: "workflow.execution_log"
+    format: "json"
+
+metadata:
+  category: "web_analysis"
+  tags: ["screenshot", "content_extraction", "page_analysis"]
+  difficulty: "beginner"
+  estimated_duration: "10-30 seconds"
+  use_cases:
+    - "Website auditing"
+    - "Content analysis"
+    - "SEO research"
+    - "Competitive analysis"
