@@ -21,6 +21,11 @@ import urllib.error
 import atexit
 import signal
 import os
+import dotenv
+
+dotenv.load_dotenv()
+CHROME_PATH = os.getenv("GOOGLE_CHROME_PATH", "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe")
+USER_PROFILE = os.getenv("USER_PROFILE_PATH") or "C:\\temp\\chrome_mcp_debug"
 
 def is_chrome_running():
     """Check if Chrome debugging is already available"""
@@ -40,11 +45,11 @@ def start_chrome_debug():
     import platform
     
     if platform.system() == "Windows":
-        chrome_path = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+        chrome_path = CHROME_PATH
         cmd = [
             chrome_path,
             "--remote-debugging-port=9222",
-            "--user-data-dir=C:\\Users\\RanVic\\AppData\\Local\\Google\\Chrome\\User Data\\System Profile",
+            f"--user-data-dir={USER_PROFILE}",
             "--no-first-run",
             "--no-default-browser-check"
         ]
@@ -57,7 +62,7 @@ def start_chrome_debug():
         cmd = [
             chrome_path,
             "--remote-debugging-port=9222",
-            "--user-data-dir=/tmp/chrome_mcp_debug",
+            f"--user-data-dir={USER_PROFILE}",
             "--no-first-run",
             "--no-default-browser-check"
         ]
