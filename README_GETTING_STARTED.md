@@ -14,7 +14,7 @@ python -m venv .venv
 # or: source .venv/bin/activate  # macOS/Linux
 
 # Install dependencies  
-pip install -r requirements.txt
+# pip install -r requirements.txt
 uv sync
 ```
 
@@ -105,13 +105,13 @@ MCP_SERVER_COMMAND="path/to/python" "path/to/examples/mcp_browser_control.py" --
 Set environment variable if Chrome isn't found automatically:
 ```bash
 # Windows
-set CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"
+set GOOGLE_CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 # macOS  
-export CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+export GOOGLE_CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 # Linux
-export CHROME_PATH="/usr/bin/google-chrome"
+export GOOGLE_CHROME_PATH="/usr/bin/google-chrome"
 ```
 
 ---
@@ -150,8 +150,8 @@ start_browser_mcp.bat
 **"Chrome not found"**
 ```bash
 # Solution: Set Chrome path manually
-set CHROME_PATH="C:\Path\To\Your\Chrome.exe"  # Windows
-export CHROME_PATH="/path/to/chrome"          # macOS/Linux
+set GOOGLE_CHROME_PATH="C:\Path\To\Your\Chrome.exe"  # Windows
+export GOOGLE_CHROME_PATH="/path/to/chrome"          # macOS/Linux
 ```
 
 **"Port 9222 already in use"**
