@@ -14,6 +14,12 @@ that learns and codifies successful patterns for reliable, repeatable execution.
 
 Author: Agent-Space Team
 Version: 3.0 Workflow Enhanced
+
+TEST_PROMPT:
+go to gmail and send "Hello" to recipient "jassiakwa2@gmail.com", make sure to wait for elements to load before getting iteractive elements so you get the right elements.
+You can also get page content to find the right elements.
+Make sure not to type the recipient and body at the wrong places, but first get the text area to type the recipient, then get the text area to type the body.
+And before sending, reanalyze everything to see if it is all done right.
 """
 
 import os
@@ -79,6 +85,7 @@ WORKFLOW_PATTERN_MIN_LENGTH = int(os.getenv("WORKFLOW_PATTERN_MIN_LENGTH", "3"))
 AUTO_SUGGEST_WORKFLOWS = os.getenv("AUTO_SUGGEST_WORKFLOWS", "true").lower() == "true"
 WORKFLOW_EXECUTION_MODE = os.getenv("WORKFLOW_EXECUTION_MODE", "interactive")  # interactive, automatic, mixed
 
+CONTINUE_ON_ERROR = True
 # Setup enhanced logging
 logging.basicConfig(
     level=logging.DEBUG if DEBUG else logging.INFO,
@@ -259,7 +266,7 @@ class ErrorHandlingConfig:
     global_retry_limit: int = 3
     timeout_seconds: int = 300
     recovery_strategies: List[Dict[str, Any]] = field(default_factory=list)
-    continue_on_error: bool = False
+    continue_on_error: bool = CONTINUE_ON_ERROR
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization"""
