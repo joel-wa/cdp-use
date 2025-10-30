@@ -2,14 +2,16 @@
 name = "cdp-use"
 version = "1.4.1"
 description = "Type safe generator/client library for CDP"
-readme = "README.md"
+readme = "README_GETTING_STARTED.md"
 requires-python = ">=3.11"
 dependencies = [
+    "aiohttp>=3.9.0",
     "fastapi>=0.116.1",
     "google-genai>=1.37.0",
     "httpx>=0.28.1",
     "mcp[cli]>=1.14.0",
     "pyyaml>=6.0.2",
+    "uvicorn>=0.24.0",
     "websockets>=15.0.1",
 ]
 
