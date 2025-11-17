@@ -1,6 +1,6 @@
 author: agent_learning
 created_at: '2025-11-18T00:03:26.980382'
-description: User-requested workflow
+description: Extract image url from an Amazon product page
 error_handling:
   continue_on_error: true
   global_retry_limit: 3
@@ -21,7 +21,7 @@ outputs:
   source: step_2_execute_javascript.result
   transformation: null
 parameters:
-- default: https://www.amazon.in/Godrej-Refrigerator-EONVALOR-260C-RCIF/dp/B0BVR5JXZG/ref=sr_1_2_sspa?_encoding=UTF8&content-id=amzn1.sym.58c90a12-100b-4a2f-8e15-7c06f1abe2be&dib=eyJ2IjoiMSJ9.sXPkWCOV5AkMytKBtk9Gs_oUBEteNLadcY0EPJpK8iG2ZXbxxrIwiVhti4URKqvdJw_y2XctlJFVwnyLGv9yvVcbwfMegiWWCWjKMjSwWfDeLXPgxZmURIyvWZWTYbl0zeLqR4VUF60CAszDmgx4uiHsqWQ1I36vOxRir_fWyv0O0JfRbHUSAd-QO1Sz5OEAPsDJCjaMeZLkNn-xtJGYK0-tuPPMO7fbT4-cODFXCv0FMaAFUQ6XYyMaWd3ygLSkTuXZQwX0PaF7iK4TQ2PubINnvpbw0iEvuY5lGW5-qPE.flCavkgj-O_4FWuMk_SJ7V3XzdfUiQRgE7vfUmuXrTQ&dib_tag=se&pd_rd_r=78b4b045-87fc-4389-bd6a-33adcdfa1337&pd_rd_w=11lE4&pd_rd_wg=GNPSG&qid=1763373924&refinements=p_85%3A10440599031&rps=1&s=kitchen&sr=1-2-spons&aref=ON8JX3Un0S&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGZfYnJvd3Nl&th=1
+- default: https://www.amazon.in/BEHOMA-Peacock-Figurine-Tabletop-Showpiece/dp/B0D2T51RC7/ref=s9_acsd_al_ot_cv2_0_t?_encoding=UTF8&pf_rd_m=A21TJRUUN4KGV&pf_rd_s=merchandised-search-5&pf_rd_r=PR7E9G6CJ9H0KDH24GT3&pf_rd_p=44238c9c-bc8a-4409-9018-37851f5bb42d&pf_rd_t=&pf_rd_i=86946701031
   description: Parameter for navigate
   name: navigate_url
   required: true
@@ -39,7 +39,7 @@ steps:
     backoff_multiplier: 2.0
     backoff_strategy: exponential
     initial_delay: 1.0
-    max_attempts: 2
+    max_attempts: 3
     max_delay: 60.0
   tool: navigate
   validation: null
@@ -54,7 +54,7 @@ steps:
     backoff_multiplier: 2.0
     backoff_strategy: exponential
     initial_delay: 1.0
-    max_attempts: 2
+    max_attempts: 3
     max_delay: 60.0
   tool: execute_javascript
   validation: null

@@ -405,9 +405,16 @@ class WorkflowExecutor:
             execution_order = self._calculate_execution_order(workflow.steps)
             
             executed_count = 0
-            for step in execution_order:
+            for i, step in enumerate(execution_order):
                 if await self._execute_step(step, context):
                     executed_count += 1
+                    
+                    # Add a small delay between steps to allow for page rendering/JS execution
+                    # Skip delay after the last step
+                    if i < len(execution_order) - 1:
+                        inter_step_delay = 0.5  # 500ms between steps
+                        context.log(f"⏳ Waiting {inter_step_delay}s before next step...")
+                        await asyncio.sleep(inter_step_delay)
                 else:
                     if not workflow.error_handling.continue_on_error:
                         break
@@ -480,6 +487,11 @@ class WorkflowExecutor:
         
         for attempt in range(retry_policy.max_attempts):
             try:
+                # Add initial delay before first attempt (important for page loads)
+                if attempt == 0 and retry_policy.initial_delay > 0:
+                    context.log(f"⏳ Waiting {retry_policy.initial_delay:.1f}s before execution...")
+                    await asyncio.sleep(retry_policy.initial_delay)
+                
                 context.log(f"Attempt {attempt + 1}/{retry_policy.max_attempts}")
                 
                 result = await self.mcp_session.call_tool(step.tool, resolved_params)
