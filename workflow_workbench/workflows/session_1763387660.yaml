@@ -1,0 +1,91 @@
+author: agent_learning
+created_at: '2025-11-17T19:25:10.977181'
+description: User-requested workflow
+error_handling:
+  continue_on_error: true
+  global_retry_limit: 3
+  recovery_strategies: []
+  timeout_seconds: 300
+metadata:
+  original_tool_count: 4
+  source: execution_history
+  success_rate: 1.0
+name: session_1763387660
+outputs:
+- format: json
+  name: execution_log
+  source: workflow.execution_log
+  transformation: null
+- format: json
+  name: final_result
+  source: step_4_click_element_by_index.result
+  transformation: null
+parameters:
+- default: https://www.youtube.com
+  description: Parameter for navigate
+  name: navigate_url
+  required: true
+  type: string
+  validation:
+    pattern: ^https?://.+
+steps:
+- conditional: null
+  depends_on: []
+  description: Execute navigate
+  id: step_1_navigate
+  parameters:
+    url: '{{navigate_url}}'
+  retry_policy:
+    backoff_multiplier: 2.0
+    backoff_strategy: exponential
+    initial_delay: 1.0
+    max_attempts: 2
+    max_delay: 60.0
+  tool: navigate
+  validation: null
+- conditional: null
+  depends_on:
+  - step_1_navigate
+  description: Execute get_interactive_elements
+  id: step_2_get_interactive_elements
+  parameters: {}
+  retry_policy:
+    backoff_multiplier: 2.0
+    backoff_strategy: exponential
+    initial_delay: 1.0
+    max_attempts: 2
+    max_delay: 60.0
+  tool: get_interactive_elements
+  validation: null
+- conditional: null
+  depends_on:
+  - step_2_get_interactive_elements
+  description: Execute type_text
+  id: step_3_type_text
+  parameters:
+    selector: input.ytSearchboxComponentInput
+    text: mr beast
+  retry_policy:
+    backoff_multiplier: 2.0
+    backoff_strategy: exponential
+    initial_delay: 1.0
+    max_attempts: 2
+    max_delay: 60.0
+  tool: type_text
+  validation: null
+- conditional: null
+  depends_on:
+  - step_3_type_text
+  description: Execute click_element_by_index
+  id: step_4_click_element_by_index
+  parameters:
+    element_index: 8
+  retry_policy:
+    backoff_multiplier: 2.0
+    backoff_strategy: exponential
+    initial_delay: 1.0
+    max_attempts: 2
+    max_delay: 60.0
+  tool: click_element_by_index
+  validation: null
+version: '1.0'

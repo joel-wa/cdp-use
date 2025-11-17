@@ -70,7 +70,7 @@ Define a structured message protocol for WebSocket communication:
 ```python
 # Message Types
 MESSAGE_TYPES = {
-    'status': 'System status updates',
+     'status': 'System status updates',
     'assistant_thinking': 'AI processing indication',
     'tool_start': 'Tool execution begins',
     'tool_complete': 'Tool execution finished',

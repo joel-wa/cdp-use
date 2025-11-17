@@ -1,0 +1,46 @@
+graph TD
+    Input[Tool Call Request] --> Queue[Tool Call Queue]
+    
+    Queue --> Seq{Sequential Execution}
+    Seq --> ToolCall[Next Tool Call]
+    
+    ToolCall --> Validate[Tool Validator]
+    Validate --> Valid{Valid?}
+    
+    Valid -->|No| ValError[Validation Error]
+    ValError --> Recovery
+    
+    Valid -->|Yes| Execute[Execute via MCP]
+    Execute --> Timeout{Timeout Check}
+    
+    Timeout -->|Exceeded| TimeoutError[Timeout Error]
+    TimeoutError --> Recovery
+    
+    Timeout -->|OK| Result[Process Result]
+    Result --> Success{Success?}
+    
+    Success -->|No| Recovery[Error Recovery Engine]
+    Recovery --> Severity[Classify Severity]
+    Severity --> Strategy[Choose Strategy]
+    Strategy --> Retry{Can Retry?}
+    
+    Retry -->|Yes| RetryCount{Attempts < Max?}
+    RetryCount -->|Yes| Execute
+    RetryCount -->|No| Fail[Mark Failed]
+    
+    Retry -->|No| Fail
+    Success -->|Yes| UpdateState[Update System State]
+    
+    UpdateState --> Context[Update Context Cache]
+    Context --> History[Add to History]
+    History --> More{More Tools?}
+    
+    More -->|Yes| Seq
+    More -->|No| Complete[Return Results]
+    
+    Fail --> More
+    
+    style Execute fill:#2196f3
+    style Recovery fill:#ff9800
+    style Complete fill:#4caf50
+    style Fail fill:#f44336

@@ -1,0 +1,41 @@
+graph TD
+    Start([Workflow Request]) --> Mode{Execution Mode}
+    
+    Mode -->|Create New| Record[Start Recording]
+    Mode -->|Run Existing| Load[Load Workflow]
+    Mode -->|Auto-detect| Suggest[Pattern Detection]
+    
+    Record --> Capture[Capture Tool Calls]
+    Capture --> Analyze[Analyze Patterns]
+    Analyze --> Extract[Extract Parameters]
+    Extract --> Create[Create Definition]
+    Create --> Save[Save to Library]
+    
+    Load --> Validate[Validate Definition]
+    Validate --> ValidParams[Validate Parameters]
+    ValidParams --> Order[Calculate Execution Order]
+    Order --> Execute[Execute Steps]
+    
+    Execute --> Step{For Each Step}
+    Step --> CheckDeps[Check Dependencies]
+    CheckDeps --> Resolve[Resolve Parameters]
+    Resolve --> CallTool[Call Tool]
+    CallTool --> Retry{Success?}
+    
+    Retry -->|No| RetryLogic[Apply Retry Policy]
+    RetryLogic --> CallTool
+    Retry -->|Yes| StepResult[Store Result]
+    
+    StepResult --> MoreSteps{More Steps?}
+    MoreSteps -->|Yes| Step
+    MoreSteps -->|No| ProcessOutput[Process Outputs]
+    
+    ProcessOutput --> End([Workflow Complete])
+    
+    Suggest --> Candidates[Generate Candidates]
+    Candidates --> Present[Present to User]
+    
+    style Start fill:#4caf50
+    style End fill:#4caf50
+    style Execute fill:#ff9800
+    style CallTool fill:#2196f3

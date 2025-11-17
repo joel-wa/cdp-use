@@ -28,12 +28,14 @@ python start_browser_mcp.py
 ```
 
 
-**That's it!** 🎉 Your browser automation server is running!
+**That's it!** 🎉 The browser for automation is running! (MCP Accessible browser)
 
 ### 3. **Run this script to interact with it**
-``` bash
-python simple_conversational_orchestrator.py
-```
+<!-- ``` bash -->
+<!-- # python  simple_conversational_orchestrator.py -->
+<!-- ``` -->
+Select the "orchestrator_web_ui.py" file and run it
+Navigate to the MCP Chat UI to start controlling the browser with AI, powered by Gemini.
 ---
 
 ## 🛠️ What You Get
@@ -57,23 +59,6 @@ python simple_conversational_orchestrator.py
 
 ## 💡 Usage Examples
 
-### **For AI Agents & MCP Clients:**
-```bash
-# Server runs and waits for MCP client connections
-python start_browser_mcp.py
-
-# Connect your AI agent via stdio protocol
-# Server provides all browser automation tools automatically
-```
-
-### **For Gemini MCP Orchestrator:**
-```bash
-# 1. Configure .env file (see Configuration section)
-# 2. Start the server
-python start_browser_mcp.py
-
-# 3. Your Gemini agent can now control browsers!
-```
 
 ### **Direct Testing:**
 ```bash

@@ -1,0 +1,52 @@
+graph TD
+    Session[Tool Execution Session] --> History[Execution History]
+    
+    History --> Group[Group Tool Chains]
+    Group --> Chains[Related Tool Chains]
+    
+    Chains --> MinLength{Length >= Min?}
+    MinLength -->|No| Skip[Skip Chain]
+    MinLength -->|Yes| Analyze[Pattern Analyzer]
+    
+    Analyze --> Match[Match Known Patterns]
+    Match --> WebPat[Web Patterns]
+    Match --> FilePat[File Patterns]
+    Match --> AutoPat[Automation Patterns]
+    
+    WebPat --> Confidence
+    FilePat --> Confidence
+    AutoPat --> Confidence
+    
+    Confidence[Calculate Confidence] --> Extract[Parameter Extractor]
+    
+    Extract --> URLs[Extract URLs]
+    Extract --> Paths[Extract Paths]
+    Extract --> Selectors[Extract Selectors]
+    Extract --> Values[Extract Values]
+    
+    URLs --> Merge[Merge Parameters]
+    Paths --> Merge
+    Selectors --> Merge
+    Values --> Merge
+    
+    Merge --> Candidate[Create Workflow Candidate]
+    Candidate --> Score{Confidence > Threshold?}
+    
+    Score -->|No| Skip
+    Score -->|Yes| Suggest[Suggest to User]
+    
+    Suggest --> Accept{User Accepts?}
+    Accept -->|Yes| Generate[Generate Definition]
+    Accept -->|No| Learn[Update Learning Model]
+    
+    Generate --> Template[Template Parameters]
+    Template --> Steps[Define Steps]
+    Steps --> Validation[Add Validation]
+    Validation --> SaveWF[Save Workflow]
+    
+    Learn --> Feedback[Store Feedback]
+    Feedback --> Improve[Improve Patterns]
+    
+    style Candidate fill:#9c27b0
+    style Suggest fill:#ff9800
+    style SaveWF fill:#4caf50

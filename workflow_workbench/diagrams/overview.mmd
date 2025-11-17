@@ -1,0 +1,28 @@
+graph TD
+    User[User Input] --> CLI[WorkflowCLI]
+    User --> Orch[Orchestrator]
+    
+    CLI --> WE[Workflow Engine]
+    Orch --> WE
+    Orch --> TE[Tool Execution]
+    
+    WE --> Models[Data Models]
+    TE --> Models
+    
+    WE --> WLib[Workflow Library]
+    WE --> WExec[Workflow Executor]
+    WE --> Learn[Learning Engine]
+    
+    TE --> ToolOrch[Tool Orchestrator]
+    TE --> Validator[Tool Validator]
+    TE --> Recovery[Error Recovery]
+    
+    WLib --> Storage[(YAML Storage)]
+    Orch --> MCP[MCP Server]
+    Orch --> Gemini[Gemini API]
+    
+    style CLI fill:#e1f5ff
+    style Orch fill:#fff4e1
+    style WE fill:#e8f5e9
+    style TE fill:#fce4ec
+    style Models fill:#f3e5f5

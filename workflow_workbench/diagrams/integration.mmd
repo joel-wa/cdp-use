@@ -1,0 +1,85 @@
+graph TB
+    subgraph "User Layer"
+        CLI[CLI Interface]
+        Interactive[Interactive Session]
+    end
+    
+    subgraph "Orchestration Layer"
+        Orch[Main Orchestrator]
+        MsgBuilder[System Message Builder]
+        Stream[Streaming Manager]
+    end
+    
+    subgraph "Workflow Subsystem"
+        WRecording[Recording Mode]
+        WLibrary[Workflow Library]
+        WExecutor[Workflow Executor]
+        WValidator[Workflow Validator]
+        WState[State Manager]
+    end
+    
+    subgraph "Learning Subsystem"
+        LEngine[Learning Engine]
+        PAnalyzer[Pattern Analyzer]
+        PExtractor[Parameter Extractor]
+    end
+    
+    subgraph "Tool Execution Subsystem"
+        TOrchestrator[Tool Orchestrator]
+        TValidator[Tool Validator]
+        ERecovery[Error Recovery]
+        CManager[Context Manager]
+    end
+    
+    subgraph "Foundation Layer"
+        Models[Data Models]
+        Config[Configuration]
+        State[System State]
+    end
+    
+    subgraph "External Systems"
+        MCP[MCP Server]
+        Gemini[Gemini API]
+        Storage[(Workflow Storage)]
+    end
+    
+    CLI --> Orch
+    Interactive --> Orch
+    
+    Orch --> WRecording
+    Orch --> WExecutor
+    Orch --> TOrchestrator
+    Orch --> MsgBuilder
+    Orch --> Stream
+    
+    WRecording --> LEngine
+    WRecording --> WLibrary
+    
+    WExecutor --> WValidator
+    WExecutor --> WState
+    WExecutor --> TOrchestrator
+    
+    LEngine --> PAnalyzer
+    LEngine --> PExtractor
+    
+    TOrchestrator --> TValidator
+    TOrchestrator --> ERecovery
+    TOrchestrator --> CManager
+    TOrchestrator --> MCP
+    
+    WLibrary --> Storage
+    WValidator --> Models
+    WExecutor --> Models
+    TOrchestrator --> State
+    
+    Orch --> Gemini
+    Orch --> State
+    
+    MsgBuilder --> Config
+    Stream --> Config
+    
+    style Orch fill:#fff4e1,stroke:#ff6f00,stroke-width:3px
+    style WExecutor fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style TOrchestrator fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+    style LEngine fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    style Models fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
