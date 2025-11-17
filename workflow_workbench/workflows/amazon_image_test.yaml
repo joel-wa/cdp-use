@@ -21,8 +21,7 @@ outputs:
   source: step_2_execute_javascript.result
   transformation: null
 parameters:
-- default: https://www.amazon.in/BEHOMA-Peacock-Figurine-Tabletop-Showpiece/dp/B0D2T51RC7/ref=s9_acsd_al_ot_cv2_0_t?_encoding=UTF8&pf_rd_m=A21TJRUUN4KGV&pf_rd_s=merchandised-search-5&pf_rd_r=PR7E9G6CJ9H0KDH24GT3&pf_rd_p=44238c9c-bc8a-4409-9018-37851f5bb42d&pf_rd_t=&pf_rd_i=86946701031
-  description: Parameter for navigate
+- default: https://www.amazon.in/Pepe-Jeans-Mens-Slim-PM207620S913_Black/dp/B0CLM5BKZB/ref=s9_acsd_al_bw_cv2_0_t?_encoding=UTF8&pf_rd_m=A21TJRUUN4KGV&pf_rd_s=merchandised-search-19&pf_rd_r=SAQHFB4GY361VPDP9EAF&pf_rd_p=4d338805-1447-4f3c-9662-41ac53945e58&pf_rd_t=&pf_rd_i=1968076031
   name: navigate_url
   required: true
   type: string
@@ -38,7 +37,7 @@ steps:
   retry_policy:
     backoff_multiplier: 2.0
     backoff_strategy: exponential
-    initial_delay: 1.0
+    initial_delay: 0.2
     max_attempts: 3
     max_delay: 60.0
   tool: navigate
