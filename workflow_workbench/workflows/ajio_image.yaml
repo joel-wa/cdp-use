@@ -1,0 +1,121 @@
+author: agent_learning
+created_at: '2025-11-18T00:29:15.067460'
+description: User-requested workflow
+error_handling:
+  continue_on_error: true
+  global_retry_limit: 3
+  recovery_strategies: []
+  timeout_seconds: 300
+metadata:
+  original_tool_count: 6
+  source: execution_history
+  success_rate: 1.0
+name: session_1763405888
+outputs:
+- format: json
+  name: execution_log
+  source: workflow.execution_log
+  transformation: null
+- format: json
+  name: final_result
+  source: step_6_execute_javascript.result
+  transformation: null
+parameters:
+- default: https://www.ajio.com/peter-england-casuals-men-patterned-regular-fit-v-neck-pullover/p/442378075_maroon?
+  description: Parameter for navigate
+  name: navigate_url
+  required: true
+  type: string
+  validation:
+    pattern: ^https?://.+
+steps:
+- conditional: null
+  depends_on: []
+  description: Execute navigate
+  id: step_1_navigate
+  parameters:
+    url: '{{navigate_url}}'
+  retry_policy:
+    backoff_multiplier: 2.0
+    backoff_strategy: exponential
+    initial_delay: 1.0
+    max_attempts: 2
+    max_delay: 60.0
+  tool: navigate
+  validation: null
+- conditional: null
+  depends_on:
+  - step_1_navigate
+  description: Execute execute_javascript
+  id: step_2_execute_javascript
+  parameters:
+    expression: document.querySelector('img.rilrtl-lazy-img').src
+  retry_policy:
+    backoff_multiplier: 2.0
+    backoff_strategy: exponential
+    initial_delay: 1.0
+    max_attempts: 2
+    max_delay: 60.0
+  tool: execute_javascript
+  validation: null
+- conditional: null
+  depends_on:
+  - step_2_execute_javascript
+  description: Execute execute_javascript
+  id: step_3_execute_javascript
+  parameters:
+    expression: document.querySelector('.rilrtl-lazy-img-loaded').src
+  retry_policy:
+    backoff_multiplier: 2.0
+    backoff_strategy: exponential
+    initial_delay: 1.0
+    max_attempts: 2
+    max_delay: 60.0
+  tool: execute_javascript
+  validation: null
+- conditional: null
+  depends_on:
+  - step_3_execute_javascript
+  description: Execute execute_javascript
+  id: step_4_execute_javascript
+  parameters:
+    expression: Array.from(document.querySelectorAll('img')).map(img => img.src);
+  retry_policy:
+    backoff_multiplier: 2.0
+    backoff_strategy: exponential
+    initial_delay: 1.0
+    max_attempts: 2
+    max_delay: 60.0
+  tool: execute_javascript
+  validation: null
+- conditional: null
+  depends_on:
+  - step_4_execute_javascript
+  description: Execute execute_javascript
+  id: step_5_execute_javascript
+  parameters:
+    expression: document.querySelector(".rilrtl-lazy-img").src
+  retry_policy:
+    backoff_multiplier: 2.0
+    backoff_strategy: exponential
+    initial_delay: 1.0
+    max_attempts: 2
+    max_delay: 60.0
+  tool: execute_javascript
+  validation: null
+- conditional: null
+  depends_on:
+  - step_5_execute_javascript
+  description: Execute execute_javascript
+  id: step_6_execute_javascript
+  parameters:
+    expression: document.querySelector("img.rilrtl-lazy-img.img-alignment.zoom-cursor.rilrtl-lazy-img-loaded").src
+  retry_policy:
+    backoff_multiplier: 2.0
+    backoff_strategy: exponential
+    initial_delay: 1.0
+    max_attempts: 2
+    max_delay: 60.0
+  tool: execute_javascript
+  validation: null
+version: '1.0'
