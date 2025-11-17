@@ -1,6 +1,6 @@
 author: agent_learning
 created_at: '2025-11-17T19:25:10.977181'
-description: User-requested workflow
+description: Type something in the YouTube search bar
 error_handling:
   continue_on_error: true
   global_retry_limit: 3
