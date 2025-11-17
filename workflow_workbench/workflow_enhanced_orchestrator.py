@@ -81,7 +81,7 @@ TOOL_EXECUTION_TIMEOUT = int(os.getenv("TOOL_EXECUTION_TIMEOUT", "60"))
 # Workflow-specific configuration
 WORKFLOWS_DIR = os.getenv("WORKFLOWS_DIR", "./workflows")
 ENABLE_WORKFLOW_LEARNING = os.getenv("ENABLE_WORKFLOW_LEARNING", "true").lower() == "true"
-WORKFLOW_PATTERN_MIN_LENGTH = int(os.getenv("WORKFLOW_PATTERN_MIN_LENGTH", "3"))
+WORKFLOW_PATTERN_MIN_LENGTH = int(os.getenv("WORKFLOW_PATTERN_MIN_LENGTH", "1"))
 AUTO_SUGGEST_WORKFLOWS = os.getenv("AUTO_SUGGEST_WORKFLOWS", "true").lower() == "true"
 WORKFLOW_EXECUTION_MODE = os.getenv("WORKFLOW_EXECUTION_MODE", "interactive")  # interactive, automatic, mixed
 
