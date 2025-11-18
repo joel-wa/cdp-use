@@ -1,6 +1,6 @@
 author: agent_learning
 created_at: '2025-11-18T00:29:15.067460'
-description: Optimized workflow - removed redundant selector attempts
+description: Optimized Ajio workflow to extract product image from Link - removed redundant selector attempts
 error_handling:
   continue_on_error: true
   global_retry_limit: 3
