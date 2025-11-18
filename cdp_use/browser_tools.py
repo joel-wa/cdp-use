@@ -19,19 +19,21 @@ from cdp_use.client import CDPClient
 class BrowserTools:
     """Collection of browser automation tools for FastMCP server"""
     
-    def __init__(self, cdp_client_ref, selector_map_ref):
-        """Initialize with references to the main server's CDP client and selector map"""
+    def __init__(self, session_manager_ref, cdp_client_ref, selector_map_ref):
+        """Initialize with references to the main server's session manager, CDP client and selector map"""
+        self.get_session_manager = session_manager_ref
         self.get_cdp_client = cdp_client_ref
         self.get_selector_map = selector_map_ref
         
-    async def navigate(self, url: str) -> str:
+    async def navigate(self, url: str, session_id: Optional[str] = None) -> str:
         """Navigate to a URL
         
         Args:
             url: The URL to navigate to
+            session_id: Optional session ID (uses default if not provided)
         """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             await cdp_client.send.Page.navigate({'url': url})
             await asyncio.sleep(2)  # Wait for page to load
@@ -40,14 +42,15 @@ class BrowserTools:
         except Exception as e:
             return f"Error navigating to {url}: {str(e)}"
     
-    async def click_element(self, selector: str) -> str:
+    async def click_element(self, selector: str, session_id: Optional[str] = None) -> str:
         """Click an element using a CSS selector
         
         Args:
             selector: CSS selector for the element to click
+            session_id: Optional session ID (uses default if not provided)
         """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             # Get the document
             doc_result = await cdp_client.send.DOM.getDocument()
@@ -94,20 +97,21 @@ class BrowserTools:
         except Exception as e:
             return f"Error clicking element {selector}: {str(e)}"
     
-    async def type_text(self, text: str, selector: str = None, press_enter: bool = False) -> str:
+    async def type_text(self, text: str, selector: str = None, press_enter: bool = False, session_id: Optional[str] = None) -> str:
         """Type text into an element or the current focus
         
         Args:
             text: Text to type
             selector: Optional CSS selector for the element to focus first
             press_enter: Whether to press Enter after typing the text
+            session_id: Optional session ID (uses default if not provided)
         """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             # If selector provided, click the element first to focus it
             if selector:
-                click_result = await self.click_element(selector)
+                click_result = await self.click_element(selector, session_id)
                 if "Error" in click_result:
                     return click_result
             
@@ -120,7 +124,7 @@ class BrowserTools:
             
             # Press Enter if requested
             if press_enter:
-                await self.press_key('Enter')
+                await self.press_key('Enter', session_id)
             
             enter_msg = " and pressed Enter" if press_enter else ""
             return f"Successfully typed text: {text}{enter_msg}"
@@ -128,14 +132,15 @@ class BrowserTools:
         except Exception as e:
             return f"Error typing text: {str(e)}"
     
-    async def press_key(self, key: str) -> str:
+    async def press_key(self, key: str, session_id: Optional[str] = None) -> str:
         """Press a special key (Enter, Tab, Escape, etc.)
         
         Args:
             key: The key to press (Enter, Tab, Escape, ArrowUp, ArrowDown, etc.)
+            session_id: Optional session ID (uses default if not provided)
         """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             # Map common key names to CDP key codes
             key_codes = {
@@ -186,15 +191,16 @@ class BrowserTools:
         except Exception as e:
             return f"Error pressing key {key}: {str(e)}"
     
-    async def take_screenshot(self, format_type: str = "png", quality: int = 90) -> Dict[str, Any]:
+    async def take_screenshot(self, format_type: str = "png", quality: int = 90, session_id: Optional[str] = None) -> Dict[str, Any]:
         """Take a screenshot of the current page
         
         Args:
             format_type: Image format (png or jpeg)
-            quality: Image quality for JPEG (1-100)
+            quality: Image quality (0-100, only for jpeg)
+            session_id: Optional session ID (uses default if not provided)
         """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             params = {'format': format_type}
             if format_type == 'jpeg':
@@ -426,15 +432,16 @@ class BrowserTools:
         except Exception as e:
             return f"Error getting page content: {str(e)}"
     
-    async def wait_for_element(self, selector: str, timeout: int = 10000) -> str:
+    async def wait_for_element(self, selector: str, timeout: int = 10000, session_id: Optional[str] = None) -> str:
         """Wait for an element to appear on the page
         
         Args:
             selector: CSS selector for the element to wait for
-            timeout: Timeout in milliseconds
+            timeout: Maximum time to wait in milliseconds
+            session_id: Optional session ID (uses default if not provided)
         """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             # Use Runtime.evaluate to wait for element with timeout
             wait_script = f"""
@@ -471,7 +478,7 @@ class BrowserTools:
             return f"Error waiting for element {selector}: {str(e)}"
     
     async def get_interactive_elements(self, show_visual: bool = True, color: str = "rgba(255,0,0,0.25)", 
-                                     update_selector_map_func=None, show_bounding_boxes_func=None) -> Dict[str, Any]:
+                                     update_selector_map_func=None, show_bounding_boxes_func=None, session_id: Optional[str] = None) -> Dict[str, Any]:
         """Get a list of all interactive elements on the page and optionally show visual indicators.
         Use this tool when you need to interact and take some actions on a web page easily.
         
@@ -480,20 +487,21 @@ class BrowserTools:
             color: Color for the visual indicators (default: red with transparency)
             update_selector_map_func: Function to update the selector map
             show_bounding_boxes_func: Function to show bounding boxes
+            session_id: Optional session ID (uses default if not provided)
         """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             # Update the selector map
             if update_selector_map_func:
-                await update_selector_map_func()
+                await update_selector_map_func(session_id)
             
             # Optionally show visual indicators
             if show_visual and show_bounding_boxes_func:
-                await show_bounding_boxes_func(color=color, label=True)
+                await show_bounding_boxes_func(color=color, label=True, session_id=session_id)
             
             # Get the current selector map
-            selector_map = self.get_selector_map()
+            selector_map = await self.get_selector_map(session_id)
             
             # Format the results for return
             elements = []
@@ -523,21 +531,22 @@ class BrowserTools:
         except Exception as e:
             return {"error": f"Error getting interactive elements: {str(e)}"}
     
-    async def click_element_by_index(self, element_index: int, update_selector_map_func=None) -> str:
+    async def click_element_by_index(self, element_index: int, update_selector_map_func=None, session_id: Optional[str] = None) -> str:
         """Click an element using its index from the interactive elements map
         
         Args:
             element_index: The index of the element to click (from get_interactive_elements)
             update_selector_map_func: Function to update the selector map
+            session_id: Optional session ID (uses default if not provided)
         """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             # Make sure we have the latest selector map
-            selector_map = self.get_selector_map()
+            selector_map = await self.get_selector_map(session_id)
             if not selector_map and update_selector_map_func:
-                await update_selector_map_func()
-                selector_map = self.get_selector_map()
+                await update_selector_map_func(session_id)
+                selector_map = await self.get_selector_map(session_id)
             
             # Find the element
             if element_index not in selector_map:
@@ -571,10 +580,14 @@ class BrowserTools:
         except Exception as e:
             return f"Error clicking element {element_index}: {str(e)}"
     
-    async def hide_visual_indicators(self) -> str:
-        """Hide the visual indicators (bounding boxes) from the page"""
+    async def hide_visual_indicators(self, session_id: Optional[str] = None) -> str:
+        """Hide the visual indicators (bounding boxes) from the page
+        
+        Args:
+            session_id: Optional session ID (uses default if not provided)
+        """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             # JavaScript to remove the overlay
             js = r"""
@@ -611,65 +624,237 @@ def register_browser_tools(server, browser_tools_instance):
         browser_tools_instance: Instance of BrowserTools class
     """
     
-    @server.tool()
-    async def navigate(url: str) -> str:
-        """Navigate to a URL"""
-        return await browser_tools_instance.navigate(url)
+    # ===== Session Management Tools =====
     
     @server.tool()
-    async def click_element(selector: str) -> str:
-        """Click an element using a CSS selector"""
-        return await browser_tools_instance.click_element(selector)
+    async def create_session(url: str = "about:blank", metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Create a new browser tab session
+        
+        Args:
+            url: Initial URL to navigate to (default: about:blank)
+            metadata: Optional metadata to attach to the session
+        
+        Returns:
+            Session information including session_id
+        """
+        try:
+            session_manager = browser_tools_instance.get_session_manager()
+            session = await session_manager.create_session(url, metadata)
+            return {
+                "success": True,
+                "session_id": session.session_id,
+                "target_id": session.target_id,
+                "url": session.current_url,
+                "created_at": session.created_at.isoformat(),
+                "message": f"Created new session: {session.session_id}"
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
     
     @server.tool()
-    async def type_text(text: str, selector: str = None, press_enter: bool = False) -> str:
-        """Type text into an element or the current focus"""
-        return await browser_tools_instance.type_text(text, selector, press_enter)
+    async def list_sessions() -> Dict[str, Any]:
+        """List all active browser sessions
+        
+        Returns:
+            List of all active sessions with their details
+        """
+        try:
+            session_manager = browser_tools_instance.get_session_manager()
+            sessions = await session_manager.list_sessions()
+            return {
+                "success": True,
+                "total_sessions": len(sessions),
+                "sessions": sessions
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
     
     @server.tool()
-    async def press_key(key: str) -> str:
-        """Press a special key (Enter, Tab, Escape, etc.)"""
-        return await browser_tools_instance.press_key(key)
+    async def close_session(session_id: str) -> Dict[str, Any]:
+        """Close a specific browser session
+        
+        Args:
+            session_id: The ID of the session to close
+        
+        Returns:
+            Success status
+        """
+        try:
+            session_manager = browser_tools_instance.get_session_manager()
+            success = await session_manager.close_session(session_id)
+            if success:
+                return {"success": True, "message": f"Session {session_id} closed successfully"}
+            else:
+                return {"success": False, "error": f"Session {session_id} not found"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
     
     @server.tool()
-    async def take_screenshot(format_type: str = "png", quality: int = 90) -> Dict[str, Any]:
-        """Take a screenshot of the current page"""
-        return await browser_tools_instance.take_screenshot(format_type, quality)
+    async def get_session_info(session_id: str) -> Dict[str, Any]:
+        """Get detailed information about a specific session
+        
+        Args:
+            session_id: The ID of the session to query
+        
+        Returns:
+            Detailed session information
+        """
+        try:
+            session_manager = browser_tools_instance.get_session_manager()
+            session = await session_manager.get_session(session_id)
+            return {
+                "success": True,
+                **session.to_dict()
+            }
+        except KeyError:
+            return {"success": False, "error": f"Session {session_id} not found"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
     
     @server.tool()
-    async def execute_javascript(expression: str, returnByValue: bool = True) -> Any:
-        """Execute JavaScript code in the browser"""
-        return await browser_tools_instance.execute_javascript(expression, returnByValue)
+    async def set_default_session(session_id: str) -> Dict[str, Any]:
+        """Set a session as the default session
+        
+        Args:
+            session_id: The ID of the session to set as default
+        
+        Returns:
+            Success status
+        """
+        try:
+            session_manager = browser_tools_instance.get_session_manager()
+            await session_manager.set_default_session(session_id)
+            return {"success": True, "message": f"Session {session_id} is now the default"}
+        except KeyError:
+            return {"success": False, "error": f"Session {session_id} not found"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    # ===== Browser Control Tools (with optional session_id) =====
     
     @server.tool()
-    async def get_page_content(selector: str = None, human_readable: bool = True) -> str:
-        """Get the current page's content"""
-        return await browser_tools_instance.get_page_content(selector, human_readable)
+    async def navigate(url: str, session_id: str = None) -> str:
+        """Navigate to a URL
+        
+        Args:
+            url: The URL to navigate to
+            session_id: Optional session ID (uses default if not provided)
+        """
+        return await browser_tools_instance.navigate(url, session_id)
     
     @server.tool()
-    async def wait_for_element(selector: str, timeout: int = 10000) -> str:
-        """Wait for an element to appear on the page"""
-        return await browser_tools_instance.wait_for_element(selector, timeout)
+    async def click_element(selector: str, session_id: str = None) -> str:
+        """Click an element using a CSS selector
+        
+        Args:
+            selector: CSS selector for the element
+            session_id: Optional session ID (uses default if not provided)
+        """
+        return await browser_tools_instance.click_element(selector, session_id)
     
     @server.tool()
-    async def get_interactive_elements(show_visual: bool = True, color: str = "rgba(255,0,0,0.25)") -> Dict[str, Any]:
-        """Get a list of all interactive elements on the page and optionally show visual indicators"""
+    async def type_text(text: str, selector: str = None, press_enter: bool = False, session_id: str = None) -> str:
+        """Type text into an element or the current focus
+        
+        Args:
+            text: Text to type
+            selector: Optional CSS selector
+            press_enter: Whether to press Enter after typing
+            session_id: Optional session ID (uses default if not provided)
+        """
+        return await browser_tools_instance.type_text(text, selector, press_enter, session_id)
+    
+    @server.tool()
+    async def press_key(key: str, session_id: str = None) -> str:
+        """Press a special key (Enter, Tab, Escape, etc.)
+        
+        Args:
+            key: The key to press
+            session_id: Optional session ID (uses default if not provided)
+        """
+        return await browser_tools_instance.press_key(key, session_id)
+    
+    @server.tool()
+    async def take_screenshot(format_type: str = "png", quality: int = 90, session_id: str = None) -> Dict[str, Any]:
+        """Take a screenshot of the current page
+        
+        Args:
+            format_type: Image format (png or jpeg)
+            quality: Image quality (0-100)
+            session_id: Optional session ID (uses default if not provided)
+        """
+        return await browser_tools_instance.take_screenshot(format_type, quality, session_id)
+    
+    @server.tool()
+    async def execute_javascript(expression: str, returnByValue: bool = True, session_id: str = None) -> Any:
+        """Execute JavaScript code in the browser
+        
+        Args:
+            expression: JavaScript code to execute
+            returnByValue: Whether to return value or object reference
+            session_id: Optional session ID (uses default if not provided)
+        """
+        return await browser_tools_instance.execute_javascript(expression, returnByValue, session_id)
+    
+    @server.tool()
+    async def get_page_content(selector: str = None, human_readable: bool = True, session_id: str = None) -> str:
+        """Get the current page's content
+        
+        Args:
+            selector: Optional CSS selector
+            human_readable: Whether to return human-readable text
+            session_id: Optional session ID (uses default if not provided)
+        """
+        return await browser_tools_instance.get_page_content(selector, human_readable, session_id)
+    
+    @server.tool()
+    async def wait_for_element(selector: str, timeout: int = 10000, session_id: str = None) -> str:
+        """Wait for an element to appear on the page
+        
+        Args:
+            selector: CSS selector for the element
+            timeout: Maximum time to wait in milliseconds
+            session_id: Optional session ID (uses default if not provided)
+        """
+        return await browser_tools_instance.wait_for_element(selector, timeout, session_id)
+    
+    @server.tool()
+    async def get_interactive_elements(show_visual: bool = True, color: str = "rgba(255,0,0,0.25)", session_id: str = None) -> Dict[str, Any]:
+        """Get a list of all interactive elements on the page and optionally show visual indicators
+        
+        Args:
+            show_visual: Whether to show visual bounding boxes
+            color: Color for the visual indicators
+            session_id: Optional session ID (uses default if not provided)
+        """
         # Note: These functions will be passed from the main server
         return await browser_tools_instance.get_interactive_elements(
             show_visual, color, 
             browser_tools_instance._update_selector_map_func,
-            browser_tools_instance._show_bounding_boxes_func
+            browser_tools_instance._show_bounding_boxes_func,
+            session_id
         )
     
     @server.tool()
-    async def click_element_by_index(element_index: int) -> str:
-        """Click an element using its index from the interactive elements map"""
+    async def click_element_by_index(element_index: int, session_id: str = None) -> str:
+        """Click an element using its index from the interactive elements map
+        
+        Args:
+            element_index: The index of the element to click
+            session_id: Optional session ID (uses default if not provided)
+        """
         return await browser_tools_instance.click_element_by_index(
             element_index, 
-            browser_tools_instance._update_selector_map_func
+            browser_tools_instance._update_selector_map_func,
+            session_id
         )
     
     @server.tool()
-    async def hide_visual_indicators() -> str:
-        """Hide the visual indicators (bounding boxes) from the page"""
-        return await browser_tools_instance.hide_visual_indicators()
+    async def hide_visual_indicators(session_id: str = None) -> str:
+        """Hide the visual indicators (bounding boxes) from the page
+        
+        Args:
+            session_id: Optional session ID (uses default if not provided)
+        """
+        return await browser_tools_instance.hide_visual_indicators(session_id)
+

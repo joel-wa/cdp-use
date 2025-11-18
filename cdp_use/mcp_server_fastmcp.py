@@ -14,50 +14,33 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from dataclasses import dataclass
 
 from mcp.server import FastMCP
 from cdp_use.client import CDPClient
 from cdp_use.browser_tools import BrowserTools, register_browser_tools
-
-@dataclass
-class DOMRect:
-    """Represents a DOM element's bounding rectangle"""
-    x: float
-    y: float
-    width: float
-    height: float
-
-@dataclass
-class EnhancedAXNode:
-    """Represents accessibility information for a DOM element"""
-    name: Optional[str] = None
-
-@dataclass
-class EnhancedDOMTreeNode:
-    """Represents an enhanced DOM tree node with additional metadata"""
-    element_index: int
-    tag_name: str
-    attributes: Dict[str, str]
-    absolute_position: DOMRect
-    ax_node: EnhancedAXNode
-    text: str
+from cdp_use.session_manager import (
+    TabSessionManager,
+    TabSession,
+    DOMRect,
+    EnhancedAXNode,
+    EnhancedDOMTreeNode
+)
 
 class BrowserFastMCPServer:
-    """FastMCP Server for browser control using CDP"""
+    """FastMCP Server for browser control using CDP with multi-tab support"""
     
     def __init__(self):
         self.server = FastMCP("CDP Browser Control Server")
-        self.cdp_client = None
-        self.selector_map: Dict[int, EnhancedDOMTreeNode] = {}
+        self.session_manager = TabSessionManager(max_sessions=20, idle_timeout_seconds=3600)
         self._setup_tools()
     
     def _setup_tools(self):
         """Setup all browser automation tools using the external BrowserTools module"""
         # Create browser tools instance with references to this server's methods
         browser_tools = BrowserTools(
+            session_manager_ref=lambda: self.session_manager,
             cdp_client_ref=self._get_cdp_client,
-            selector_map_ref=lambda: self.selector_map
+            selector_map_ref=self._get_selector_map
         )
         
         # Add references to server methods that the tools need
@@ -67,16 +50,33 @@ class BrowserFastMCPServer:
         # Register all browser tools with this server
         register_browser_tools(self.server, browser_tools)
     
-    async def _get_cdp_client(self):
-        """Get the CDP client, connecting if necessary"""
-        if not self.cdp_client:
-            await self._connect_to_browser()
-        return self.cdp_client
+    async def _get_cdp_client(self, session_id: Optional[str] = None):
+        """Get the CDP client for a session, using default if not specified"""
+        if session_id:
+            session = await self.session_manager.get_session(session_id)
+        else:
+            session = await self.session_manager.get_or_create_default()
+        return session.cdp_client
     
-    async def update_selector_map(self):
+    async def _get_selector_map(self, session_id: Optional[str] = None):
+        """Get the selector map for a session"""
+        if session_id:
+            session = await self.session_manager.get_session(session_id)
+        else:
+            session = await self.session_manager.get_or_create_default()
+        return session.selector_map
+    
+    async def update_selector_map(self, session_id: Optional[str] = None):
         """Evaluate a script in the page that finds interactive elements and builds selector_map."""
-        if not self.cdp_client:
-            await self._connect_to_browser()
+        # Get the session
+        if session_id:
+            session = await self.session_manager.get_session(session_id)
+        else:
+            session = await self.session_manager.get_or_create_default()
+        
+        cdp_client = session.cdp_client
+        if not cdp_client:
+            raise RuntimeError(f"Session {session.session_id} has no CDP client")
 
         js = r"""
         (() => {
@@ -120,7 +120,7 @@ class BrowserFastMCPServer:
         })()
         """
 
-        result = await self.cdp_client.send.Runtime.evaluate({
+        result = await cdp_client.send.Runtime.evaluate({
             'expression': js,
             'returnByValue': True
         })
@@ -130,7 +130,7 @@ class BrowserFastMCPServer:
         
         items = result.get('result', {}).get('value', [])
         
-        # rebuild selector_map
+        # rebuild selector_map for this session
         new_map: Dict[int, EnhancedDOMTreeNode] = {}
         for it in items:
             rect = it.get("rect") or {}
@@ -146,22 +146,30 @@ class BrowserFastMCPServer:
             )
             new_map[node.element_index] = node
 
-        # replace existing map atomically
-        self.selector_map = new_map
+        # replace existing map atomically for this session
+        session.selector_map = new_map
 
-    async def show_bounding_boxes(self, indices: Optional[List[int]] = None, color: str = "rgba(255,0,0,0.25)", label: bool = True):
+    async def show_bounding_boxes(self, indices: Optional[List[int]] = None, color: str = "rgba(255,0,0,0.25)", label: bool = True, session_id: Optional[str] = None):
         """
         Render bounding boxes for elements in selector_map.
         - indices: optional list of element_index values to render; if None, render all.
         - color: CSS color for the fill (use rgba for transparency).
         - label: show small label with index/tag.
+        - session_id: optional session ID
         """
-        if not self.cdp_client:
-            await self._connect_to_browser()
+        # Get the session
+        if session_id:
+            session = await self.session_manager.get_session(session_id)
+        else:
+            session = await self.session_manager.get_or_create_default()
+        
+        cdp_client = session.cdp_client
+        if not cdp_client:
+            raise RuntimeError(f"Session {session.session_id} has no CDP client")
 
         # build serializable list of rects from selector_map
         items = []
-        for idx, node in self.selector_map.items():
+        for idx, node in session.selector_map.items():
             if indices and idx not in indices:
                 continue
             if not node.absolute_position:
@@ -245,7 +253,7 @@ class BrowserFastMCPServer:
         }
         """
         # Execute the JavaScript with arguments
-        result = await self.cdp_client.send.Runtime.evaluate({
+        result = await cdp_client.send.Runtime.evaluate({
             'expression': f'({js})({{items: {json.dumps(items)}, color: {json.dumps(color)}, doLabel: {json.dumps(label)}}})',
             'returnByValue': True
         })
@@ -255,58 +263,43 @@ class BrowserFastMCPServer:
         
         return result.get('result', {}).get('value', False)
     
-    async def _connect_to_browser(self):
-        """Connect to Chrome browser"""
-        if self.cdp_client:
-            return
-            
-        try:
-            # Get the WebSocket URL from Chrome debugging port
-            try:
-                with urllib.request.urlopen('http://localhost:9222/json', timeout=5) as response:
-                    data = response.read().decode()
-                    tabs = json.loads(data)
-            except urllib.error.URLError as e:
-                # Use pathlib for the user data directory path
-                chrome_debug_path = Path.home() / "temp" / "chrome_debug"
-                raise Exception(
-                    f"Chrome debugging not accessible on port 9222. "
-                    f"Please start Chrome with: chrome --remote-debugging-port=9222 --user-data-dir={chrome_debug_path}"
-                ) from e
-            
-            if not tabs:
-                raise Exception("No tabs/pages found in Chrome. Please open a tab in Chrome.")
-                
-            ws_url = tabs[0]['webSocketDebuggerUrl']
-            print(f"🔗 Connecting to Chrome at: {ws_url}", file=sys.stderr)
-            
-            self.cdp_client = CDPClient(ws_url)
-            await self.cdp_client.start()
-            
-            # Enable required domains
-            await self.cdp_client.send.Page.enable()
-            await self.cdp_client.send.DOM.enable()  
-            await self.cdp_client.send.Runtime.enable()
-            
-            print(f"✅ Browser connection established successfully", file=sys.stderr)
-            
-        except Exception as e:
-            error_msg = f"Failed to connect to browser: {e}"
-            print(error_msg, file=sys.stderr)
-            raise Exception(error_msg) from e
+    async def _startup(self):
+        """Initialize the session manager on startup"""
+        await self.session_manager.start()
+        print("[INFO] Session manager started", file=sys.stderr)
+    
+    async def _shutdown(self):
+        """Cleanup on shutdown"""
+        await self.session_manager.stop()
+        print("[INFO] Session manager stopped", file=sys.stderr)
     
     def run(self):
         """Run the FastMCP server"""
         print("[START] Starting CDP Browser Control FastMCP Server...", file=sys.stderr)
+        print("[INFO] Multi-tab support enabled", file=sys.stderr)
         print("[INFO] Waiting for MCP client connection via stdio...", file=sys.stderr)
         print("[INFO] Connect using an MCP client or press Ctrl+C to stop", file=sys.stderr)
         try:
+            # Start session manager before running server
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self._startup())
+            
+            # Run the server
             self.server.run()
         except KeyboardInterrupt:
             print("\n🛑 Server stopped by user", file=sys.stderr)
         except Exception as e:
             print(f"\n❌ Server error: {e}", file=sys.stderr)
             raise
+        finally:
+            # Cleanup
+            try:
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(self._shutdown())
+            except:
+                pass
 
 def main():
     """Main entry point for backward compatibility"""
