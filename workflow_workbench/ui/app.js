@@ -5,9 +5,11 @@ const REFRESH_INTERVAL = 2000; // 2 seconds
 // State
 let workflows = [];
 let activeExecutions = [];
+let executionHistory = [];
 let selectedWorkflow = null;
 let selectedExecution = null;
 let refreshTimer = null;
+let isMonitoringActive = false;
 
 // DOM Elements
 const workflowList = document.getElementById('workflowList');
@@ -23,11 +25,12 @@ const queuedCount = document.getElementById('queuedCount');
 const runningCount = document.getElementById('runningCount');
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
-    checkHealth();
-    loadWorkflows();
-    startAutoRefresh();
+    await checkHealth();
+    await loadWorkflows();
+    await loadActiveExecutions();
+    // Auto-refresh will start if there are active executions
 });
 
 // Event Listeners
@@ -35,6 +38,13 @@ function setupEventListeners() {
     executeForm.addEventListener('submit', handleExecuteWorkflow);
     document.getElementById('refreshWorkflows').addEventListener('click', loadWorkflows);
     document.getElementById('clearDetails').addEventListener('click', clearDetails);
+    document.getElementById('clearHistory').addEventListener('click', () => {
+        if (confirm('Clear execution history?')) {
+            executionHistory = [];
+            renderExecutionHistory();
+            showToast('History cleared', 'success');
+        }
+    });
     
     // Update parameters when workflow input changes
     workflowInput.addEventListener('input', (e) => {
@@ -133,6 +143,30 @@ async function cancelExecution(executionId) {
 async function loadActiveExecutions() {
     try {
         const response = await apiCall('/workflows/active');
+        
+        // Check if any executions completed
+        const previousIds = activeExecutions.map(e => e.execution_id);
+        const currentIds = response.executions.map(e => e.execution_id);
+        const completedIds = previousIds.filter(id => !currentIds.includes(id));
+        
+        // Move completed executions to history
+        for (const id of completedIds) {
+            const completed = activeExecutions.find(e => e.execution_id === id);
+            if (completed && !executionHistory.find(e => e.execution_id === id)) {
+                // Fetch full result and add to history
+                try {
+                    const result = await getExecutionResult(id);
+                    executionHistory.unshift(result);
+                    // Keep only last 50 in history
+                    if (executionHistory.length > 50) {
+                        executionHistory = executionHistory.slice(0, 50);
+                    }
+                } catch (e) {
+                    console.error(`Failed to fetch result for ${id}:`, e);
+                }
+            }
+        }
+        
         activeExecutions = response.executions;
         
         // Update counts
@@ -140,6 +174,14 @@ async function loadActiveExecutions() {
         runningCount.textContent = response.running;
         
         renderActiveExecutions();
+        renderExecutionHistory();
+        
+        // Start/stop auto-refresh based on active executions
+        if (activeExecutions.length > 0 && !isMonitoringActive) {
+            startAutoRefresh();
+        } else if (activeExecutions.length === 0 && isMonitoringActive) {
+            stopAutoRefresh();
+        }
         
         // Update selected execution if it's still active
         if (selectedExecution) {
@@ -214,6 +256,46 @@ function updateParameterTemplate(workflow) {
     });
     
     workflowParams.value = JSON.stringify(template, null, 2);
+}
+
+function renderExecutionHistory() {
+    const historyContainer = document.getElementById('executionHistory');
+    if (!historyContainer) return;
+    
+    if (executionHistory.length === 0) {
+        historyContainer.innerHTML = '<div class="empty-state">No execution history</div>';
+        return;
+    }
+    
+    historyContainer.innerHTML = executionHistory.map(execution => {
+        const statusClass = `status-${execution.status}`;
+        const duration = execution.execution_time ? formatDuration(execution.execution_time) : '--';
+        
+        return `
+            <div class="execution-card" data-execution="${execution.execution_id}">
+                <div class="execution-header">
+                    <span class="execution-id">${execution.execution_id}</span>
+                    <span class="execution-status ${statusClass}">${execution.status}</span>
+                </div>
+                <div class="execution-workflow">${execution.workflow_name}</div>
+                <div class="execution-time">Completed: ${formatTimestamp(execution.completed_at)}</div>
+                <div class="execution-time">Duration: ${duration}</div>
+                <div class="execution-actions">
+                    <button class="btn btn-secondary btn-small view-details" data-id="${execution.execution_id}">
+                        View Details
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    // Add click handlers
+    historyContainer.querySelectorAll('.view-details').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showExecutionDetails(btn.dataset.id);
+        });
+    });
 }
 
 function renderActiveExecutions() {
@@ -457,11 +539,16 @@ async function handleExecuteWorkflow(e) {
     try {
         const response = await executeWorkflow(workflowName, parameters, priority, timeout);
         
-        // Reload active executions
+        // Reload active executions and start monitoring
         await loadActiveExecutions();
         
         // Show the new execution details
         showExecutionDetails(response.execution_id);
+        
+        // Start auto-refresh if not already running
+        if (!isMonitoringActive) {
+            startAutoRefresh();
+        }
     } catch (error) {
         // Error already shown by apiCall
     }
@@ -469,10 +556,27 @@ async function handleExecuteWorkflow(e) {
 
 // Auto-refresh
 function startAutoRefresh() {
-    refreshTimer = setInterval(() => {
-        checkHealth();
-        loadActiveExecutions();
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+    }
+    
+    isMonitoringActive = true;
+    refreshTimer = setInterval(async () => {
+        if (isMonitoringActive && activeExecutions.length > 0) {
+            await loadActiveExecutions();
+        } else if (activeExecutions.length === 0) {
+            // No active executions, slow down refresh
+            stopAutoRefresh();
+        }
     }, REFRESH_INTERVAL);
+}
+
+function stopAutoRefresh() {
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+    }
+    isMonitoringActive = false;
 }
 
 // Utility Functions
