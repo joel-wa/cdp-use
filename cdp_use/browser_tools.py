@@ -217,15 +217,16 @@ class BrowserTools:
         except Exception as e:
             return {"error": f"Error taking screenshot: {str(e)}"}
     
-    async def execute_javascript(self, expression: str, returnByValue: bool = True) -> Any:
+    async def execute_javascript(self, expression: str, returnByValue: bool = True, session_id: Optional[str] = None) -> Any:
         """Execute JavaScript code in the browser
         
         Args:
             expression: JavaScript code to execute
             returnByValue: Whether to return the result by value
+            session_id: Optional session ID (uses default if not provided)
         """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             result = await cdp_client.send.Runtime.evaluate({
                 'expression': expression,
@@ -240,15 +241,16 @@ class BrowserTools:
         except Exception as e:
             return f"Error executing JavaScript: {str(e)}"
     
-    async def get_page_content(self, selector: str = None, human_readable: bool = True) -> str:
+    async def get_page_content(self, selector: str = None, human_readable: bool = True, session_id: Optional[str] = None) -> str:
         """Get the current page's content
         
         Args:
             selector: Optional CSS selector to get content of specific element
             human_readable: If True, returns only clean readable text visible to users (default: True)
+            session_id: Optional session ID (uses default if not provided)
         """
         try:
-            cdp_client = await self.get_cdp_client()
+            cdp_client = await self.get_cdp_client(session_id)
             
             if selector:
                 # Get specific element content
@@ -627,19 +629,27 @@ def register_browser_tools(server, browser_tools_instance):
     # ===== Session Management Tools =====
     
     @server.tool()
-    async def create_session(url: str = "about:blank", metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def create_session(url: str = "about:blank", metadata: str = None) -> Dict[str, Any]:
         """Create a new browser tab session
         
         Args:
             url: Initial URL to navigate to (default: about:blank)
-            metadata: Optional metadata to attach to the session
+            metadata: Optional metadata JSON string to attach to the session
         
         Returns:
             Session information including session_id
         """
         try:
             session_manager = browser_tools_instance.get_session_manager()
-            session = await session_manager.create_session(url, metadata)
+            # Parse metadata if provided
+            metadata_dict = None
+            if metadata:
+                try:
+                    metadata_dict = json.loads(metadata)
+                except:
+                    metadata_dict = {"raw": metadata}
+            
+            session = await session_manager.create_session(url, metadata_dict)
             return {
                 "success": True,
                 "session_id": session.session_id,

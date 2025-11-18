@@ -38,7 +38,7 @@ steps:
   retry_policy:
     backoff_multiplier: 2.0
     backoff_strategy: exponential
-    initial_delay: 1.0
+    initial_delay: 0.2
     max_attempts: 2
     max_delay: 60.0
   tool: navigate
@@ -83,7 +83,7 @@ steps:
   retry_policy:
     backoff_multiplier: 2.0
     backoff_strategy: exponential
-    initial_delay: 1.0
+    initial_delay: 0.5
     max_attempts: 2
     max_delay: 60.0
   tool: execute_javascript
@@ -98,7 +98,7 @@ steps:
   retry_policy:
     backoff_multiplier: 2.0
     backoff_strategy: exponential
-    initial_delay: 1.0
+    initial_delay: 0.5
     max_attempts: 2
     max_delay: 60.0
   tool: execute_javascript
@@ -113,7 +113,7 @@ steps:
   retry_policy:
     backoff_multiplier: 2.0
     backoff_strategy: exponential
-    initial_delay: 1.0
+    initial_delay: 0.5
     max_attempts: 2
     max_delay: 60.0
   tool: execute_javascript
