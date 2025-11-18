@@ -10,11 +10,13 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .models import (
     WorkflowExecuteRequest, WorkflowBatchRequest, WorkflowCancelRequest,
@@ -93,6 +95,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files for UI
+ui_path = Path(__file__).parent.parent / "ui"
+if ui_path.exists():
+    app.mount("/ui", StaticFiles(directory=str(ui_path), html=True), name="ui")
+
 
 # =====================================================
 # EXCEPTION HANDLERS
@@ -106,7 +113,7 @@ async def http_exception_handler(request, exc):
         content=ErrorResponse(
             error=exc.detail,
             timestamp=datetime.now()
-        ).model_dump()
+        ).model_dump(mode='json')
     )
 
 
@@ -120,7 +127,7 @@ async def general_exception_handler(request, exc):
             error="Internal server error",
             detail=str(exc),
             timestamp=datetime.now()
-        ).model_dump()
+        ).model_dump(mode='json')
     )
 
 
@@ -327,13 +334,22 @@ async def list_workflows():
         for name in workflow_names:
             try:
                 workflow_def = await library.load_workflow(name)
+                
+                # Handle created_at - it's already a datetime object from from_dict
+                created_at = workflow_def.created_at
+                if isinstance(created_at, str):
+                    try:
+                        created_at = datetime.fromisoformat(created_at)
+                    except:
+                        created_at = None
+                
                 workflows.append(WorkflowListItem(
                     name=workflow_def.name,
                     description=workflow_def.description,
                     parameters=[p.name for p in workflow_def.parameters],
                     estimated_duration=workflow_def.metadata.get("estimated_duration"),
                     tags=workflow_def.metadata.get("tags", []),
-                    created_at=datetime.fromisoformat(workflow_def.created_at) if workflow_def.created_at else None
+                    created_at=created_at
                 ))
             except Exception as e:
                 logger.error(f"Error loading workflow '{name}': {e}")
@@ -464,6 +480,7 @@ async def root():
         "name": "Workflow Execution API",
         "version": "1.0.0",
         "status": "running",
+        "ui": "/ui/index.html",
         "docs": "/docs",
         "health": "/health"
     }

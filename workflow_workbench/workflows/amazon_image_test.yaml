@@ -10,7 +10,7 @@ metadata:
   original_tool_count: 2
   source: execution_history
   success_rate: 1.0
-name: session_1763404364
+name: amazon_image_test
 outputs:
 - format: json
   name: execution_log

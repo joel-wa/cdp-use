@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Execution Console</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="logo">WORKFLOW EXECUTION</h1>
+                <div class="status-indicator">
+                    <span class="status-dot" id="connectionStatus"></span>
+                    <span class="status-text" id="connectionText">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Left Sidebar - Workflows List -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Available Workflows</h2>
+                    <button class="icon-btn" id="refreshWorkflows" title="Refresh">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="workflow-list" id="workflowList">
+                    <div class="loading">Loading workflows...</div>
+                </div>
+            </aside>
+
+            <!-- Center Panel - Execution Form & Active Executions -->
+            <section class="center-panel">
+                <!-- Execute Workflow Form -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Execute Workflow</h2>
+                    </div>
+                    <div class="card-content">
+                        <form id="executeForm">
+                            <div class="form-group">
+                                <label for="workflowInput">Workflow</label>
+                                <input 
+                                    type="text" 
+                                    id="workflowInput" 
+                                    list="workflowDatalist" 
+                                    placeholder="Type or select a workflow..."
+                                    required
+                                    autocomplete="off"
+                                >
+                                <datalist id="workflowDatalist"></datalist>
+                                <small>Type the workflow name or select from suggestions</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="workflowParams">Parameters (JSON)</label>
+                                <textarea id="workflowParams" rows="6" placeholder='{"key": "value"}'>{}</textarea>
+                                <small>Enter workflow parameters as JSON object</small>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="priority">Priority</label>
+                                    <select id="priority">
+                                        <option value="normal">Normal</option>
+                                        <option value="high">High</option>
+                                        <option value="low">Low</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="timeout">Timeout (seconds)</label>
+                                    <input type="number" id="timeout" value="300" min="1" max="3600">
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                </svg>
+                                Execute Workflow
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Active Executions -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Active Executions</h2>
+                        <div class="header-stats">
+                            <span class="stat">
+                                <span class="stat-label">Queued:</span>
+                                <span class="stat-value" id="queuedCount">0</span>
+                            </span>
+                            <span class="stat">
+                                <span class="stat-label">Running:</span>
+                                <span class="stat-value" id="runningCount">0</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-content">
+                        <div id="activeExecutions" class="execution-list">
+                            <div class="empty-state">No active executions</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel - Execution Details & Results -->
+            <aside class="right-panel">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Execution Details</h2>
+                        <button class="icon-btn" id="clearDetails" title="Clear">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="card-content" id="detailsPanel">
+                        <div class="empty-state">Select an execution to view details</div>
+                    </div>
+                </div>
+
+                <!-- System Stats -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2>System Status</h2>
+                    </div>
+                    <div class="card-content">
+                        <div class="stats-grid" id="systemStats">
+                            <div class="stat-item">
+                                <div class="stat-label">Uptime</div>
+                                <div class="stat-value" id="uptime">--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Active Sessions</div>
+                                <div class="stat-value" id="activeSessions">--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Available Sessions</div>
+                                <div class="stat-value" id="availableSessions">--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Total Executions</div>
+                                <div class="stat-value" id="totalExecutions">--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

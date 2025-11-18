@@ -10,7 +10,7 @@ metadata:
   original_tool_count: 6
   source: execution_history
   success_rate: 1.0
-name: session_1763405888
+name: ajio_image
 outputs:
 - format: json
   name: execution_log

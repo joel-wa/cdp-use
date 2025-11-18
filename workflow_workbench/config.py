@@ -59,7 +59,9 @@ TOOL_EXECUTION_TIMEOUT = int(os.getenv("TOOL_EXECUTION_TIMEOUT", "60"))
 # WORKFLOW CONFIGURATION
 # =====================================================
 
-WORKFLOWS_DIR = os.getenv("WORKFLOWS_DIR", "./workflows")
+# Get absolute path to workflows directory
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+WORKFLOWS_DIR = os.getenv("WORKFLOWS_DIR", os.path.join(_current_dir, "workflows"))
 WORKFLOW_PATTERN_MIN_LENGTH = int(os.getenv("WORKFLOW_PATTERN_MIN_LENGTH", "3"))
 WORKFLOW_EXECUTION_MODE = os.getenv("WORKFLOW_EXECUTION_MODE", "interactive")  # interactive, automatic, mixed
 
