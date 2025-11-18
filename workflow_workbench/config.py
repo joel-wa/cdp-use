@@ -64,6 +64,26 @@ WORKFLOW_PATTERN_MIN_LENGTH = int(os.getenv("WORKFLOW_PATTERN_MIN_LENGTH", "3"))
 WORKFLOW_EXECUTION_MODE = os.getenv("WORKFLOW_EXECUTION_MODE", "interactive")  # interactive, automatic, mixed
 
 # =====================================================
+# API CONFIGURATION
+# =====================================================
+
+API_HOST = os.getenv("API_HOST", "0.0.0.0")
+API_PORT = int(os.getenv("API_PORT", "8000"))
+API_WORKERS = int(os.getenv("API_WORKERS", "1"))
+
+# =====================================================
+# EXECUTION POOL CONFIGURATION
+# =====================================================
+
+MAX_CONCURRENT_EXECUTIONS = int(os.getenv("MAX_CONCURRENT_EXECUTIONS", "10"))
+EXECUTION_QUEUE_SIZE = int(os.getenv("EXECUTION_QUEUE_SIZE", "100"))
+SESSION_POOL_SIZE = int(os.getenv("SESSION_POOL_SIZE", "15"))
+SESSION_IDLE_TIMEOUT = int(os.getenv("SESSION_IDLE_TIMEOUT", "300"))  # 5 minutes
+SESSION_MAX_REUSE = int(os.getenv("SESSION_MAX_REUSE", "50"))
+RESULT_RETENTION_SECONDS = int(os.getenv("RESULT_RETENTION_SECONDS", "3600"))  # 1 hour
+AUTO_CLEANUP_INTERVAL = int(os.getenv("AUTO_CLEANUP_INTERVAL", "300"))  # 5 minutes
+
+# =====================================================
 # ERROR HANDLING
 # =====================================================
 
