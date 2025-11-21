@@ -32,8 +32,15 @@ class BrowserFastMCPServer:
     def __init__(self):
         self.server = FastMCP("CDP Browser Control Server")
         self.session_manager = TabSessionManager(max_sessions=20, idle_timeout_seconds=3600)
+        self._started = False
         self._setup_tools()
     
+    async def _ensure_started(self):
+        """Ensure session manager is started (lazy initialization)"""
+        if not self._started:
+            await self.session_manager.start()
+            self._started = True
+
     def _setup_tools(self):
         """Setup all browser automation tools using the external BrowserTools module"""
         # Create browser tools instance with references to this server's methods
@@ -52,6 +59,7 @@ class BrowserFastMCPServer:
     
     async def _get_cdp_client(self, session_id: Optional[str] = None):
         """Get the CDP client for a session, using default if not specified"""
+        await self._ensure_started()
         if session_id:
             session = await self.session_manager.get_session(session_id)
         else:
@@ -60,6 +68,7 @@ class BrowserFastMCPServer:
     
     async def _get_selector_map(self, session_id: Optional[str] = None):
         """Get the selector map for a session"""
+        await self._ensure_started()
         if session_id:
             session = await self.session_manager.get_session(session_id)
         else:
@@ -68,6 +77,7 @@ class BrowserFastMCPServer:
     
     async def update_selector_map(self, session_id: Optional[str] = None):
         """Evaluate a script in the page that finds interactive elements and builds selector_map."""
+        await self._ensure_started()
         # Get the session
         if session_id:
             session = await self.session_manager.get_session(session_id)
@@ -280,14 +290,17 @@ class BrowserFastMCPServer:
         print("[INFO] Waiting for MCP client connection via stdio...", file=sys.stderr)
         print("[INFO] Connect using an MCP client or press Ctrl+C to stop", file=sys.stderr)
         try:
-            # Start session manager before running server
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._startup())
-            
-            # Run the server
+            # Run the server directly - session manager will be started lazily
+            # print(f"DEBUG: sys.argv: {sys.argv}", file=sys.stderr)
             self.server.run()
+            
+            # If run() returns, it might be because it's non-blocking or finished.
+            # We'll add a small keep-alive just in case, but log it.
+            print("[WARN] FastMCP.run() returned. Entering keep-alive loop...", file=sys.stderr)
+            import time
+            while True:
+                time.sleep(1)
+                
         except KeyboardInterrupt:
             print("\n🛑 Server stopped by user", file=sys.stderr)
         except Exception as e:
@@ -296,8 +309,15 @@ class BrowserFastMCPServer:
         finally:
             # Cleanup
             try:
-                loop = asyncio.get_event_loop()
-                loop.run_until_complete(self._shutdown())
+                # We need to run shutdown in a loop if one exists, or create one
+                # But since we are exiting, we might just want to run it
+                if self._started:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # If loop is running (unlikely in finally block of run?), create task
+                        asyncio.create_task(self._shutdown())
+                    else:
+                        loop.run_until_complete(self._shutdown())
             except:
                 pass
 

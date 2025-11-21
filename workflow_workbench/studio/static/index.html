@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Studio</title>
+    <link rel="stylesheet" href="static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="logo-icon">⚡</div>
+                <h1>Workflow Studio</h1>
+            </div>
+            
+            <nav class="main-nav">
+                <button class="nav-item active" data-view="chat-view">
+                    <span class="icon">💬</span> Chat & Record
+                </button>
+                <button class="nav-item" data-view="library-view">
+                    <span class="icon">📚</span> Library
+                </button>
+                <button class="nav-item" data-view="runs-view">
+                    <span class="icon">▶️</span> Active Runs
+                </button>
+            </nav>
+
+            <div class="status-area">
+                <div class="status-item">
+                    <span class="status-dot" id="connection-status"></span>
+                    <span id="connection-text">Disconnected</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            
+            <!-- Chat View -->
+            <div id="chat-view" class="view-panel active">
+                <div class="chat-header">
+                    <div class="recording-controls">
+                        <button id="toggle-recording-btn" class="btn btn-outline">
+                            <span class="record-icon">●</span> Start Recording
+                        </button>
+                        <span id="recording-indicator" class="hidden">Recording...</span>
+                    </div>
+                </div>
+                
+                <div class="chat-messages" id="chat-messages">
+                    <div class="message system">
+                        <div class="avatar">🤖</div>
+                        <div class="content">
+                            <p>Hello! I'm your Workflow Orchestrator. You can ask me to perform tasks, or start recording to create a new workflow.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chat-input-area">
+                    <div class="input-wrapper">
+                        <textarea id="user-input" placeholder="Type a command (e.g., 'Go to google.com and search for AI')..." rows="1"></textarea>
+                        <button id="send-btn" class="btn btn-primary" aria-label="Send Message">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Library View -->
+            <div id="library-view" class="view-panel">
+                <div class="panel-header">
+                    <h2>Workflow Library</h2>
+                    <button id="refresh-workflows" class="btn btn-sm">Refresh</button>
+                </div>
+                <div class="workflow-grid" id="workflow-list">
+                    <!-- Workflows will be injected here -->
+                    <div class="loading-state">Loading workflows...</div>
+                </div>
+            </div>
+
+            <!-- Runs View -->
+            <div id="runs-view" class="view-panel">
+                <div class="panel-header">
+                    <h2>Active Executions</h2>
+                </div>
+                <div class="runs-list">
+                    <div class="empty-state">No active executions</div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="static/js/app.js"></script>
+</body>
+</html>

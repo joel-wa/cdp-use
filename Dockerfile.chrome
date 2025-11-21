@@ -1,0 +1,33 @@
+FROM python:3.11-slim-bookworm
+
+# Install Google Chrome dependencies and Chrome itself
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    unzip \
+    git \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list' \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy project files
+COPY . .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir .
+
+# Environment variables
+ENV GOOGLE_CHROME_PATH=/usr/bin/google-chrome
+ENV USER_PROFILE_PATH=/tmp/chrome_profile
+# Add --headless=new and --no-sandbox for Docker environment
+ENV CHROME_ARGS="--no-sandbox --headless=new --disable-gpu --disable-dev-shm-usage"
+
+# Expose ports
+EXPOSE 9222
+
+# Run the script
+CMD ["python", "-u", "start_browser_mcp.py"]

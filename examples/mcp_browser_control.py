@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-Example usage of the CDP Browser Control MCP Serve        print(f"[OK] Chrome started (PID {process.pid}) using: {chrome_path}")
-        print(f"[INFO] Remote debugging:         print("[INFO] Available tools: navigate, click_element, type_text, take_screenshot, execute_javascript, get_page_content, wait_for_element", file=sys.stderr)
-        print("[INFO] Available resources: browser://current-page, browser://page-source", file=sys.stderr)tp://localhost:9222")
+Example usage of the CDP Browser Control MCP Server.
 
 This example demonstrates how to run the MCP server that provides browser
 automation capabilities for AI agents.
@@ -208,6 +206,11 @@ For AI Agents:
     try:
         # Import and start the FastMCP server
         from cdp_use.mcp_server_fastmcp import BrowserFastMCPServer
+        
+        # Remove arguments handled by this script so FastMCP doesn't see them
+        # We don't clear sys.argv completely to preserve script name etc.
+        if "--server-only" in sys.argv:
+            sys.argv.remove("--server-only")
         
         server = BrowserFastMCPServer()
         server.run()
