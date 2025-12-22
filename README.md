@@ -10,8 +10,7 @@ cd cdp-use
 python -m venv .venv
 .venv\Scripts\activate  # Windows
 # source .venv/bin/activate  # macOS/Linux
-
-uv sync  # or: pip install -r requirements.txt
+uv sync
 ```
 
 ### 2. Launch Everything
