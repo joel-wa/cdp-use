@@ -10,6 +10,10 @@ This script automatically:
 Usage:
   python start_browser_mcp.py           # Start Chrome + MCP server
   python start_browser_mcp.py --help    # Show usage
+  
+  Options:
+    --transport=MODE    Transport mode: stdio (default) or sse
+    --port=PORT         Port for SSE transport (default: 8000)
 """
 
 import subprocess
@@ -103,8 +107,21 @@ def start_mcp_server():
     # Use -u for unbuffered output to ensure logs are visible in Docker
     cmd = [python_executable, "-u", server_script, "--server-only"]
     
+    # Pass through relevant arguments
+    import sys
+    for arg in sys.argv[1:]:
+        if arg.startswith("--transport=") or arg.startswith("--port="):
+            cmd.append(arg)
+            
+    # Check if SSE is used to update log message
+    is_sse = any(arg.startswith("--transport=sse") for arg in sys.argv)
+    
     print("[START] Starting MCP Browser Control Server...")
-    print("[INFO] Server will communicate via stdin/stdout")
+    if is_sse:
+        print("[INFO] Server will communicate via HTTP/SSE")
+    else:
+        print("[INFO] Server will communicate via stdin/stdout")
+        
     print("[INFO] Connect using an MCP client or press Ctrl+C to stop")
     print("="*60)
     

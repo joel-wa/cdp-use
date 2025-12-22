@@ -283,16 +283,35 @@ class BrowserFastMCPServer:
         await self.session_manager.stop()
         print("[INFO] Session manager stopped", file=sys.stderr)
     
-    def run(self):
+    def run(self, transport: str = "stdio", port: int = 8000):
         """Run the FastMCP server"""
-        print("[START] Starting CDP Browser Control FastMCP Server...", file=sys.stderr)
+        print(f"[START] Starting CDP Browser Control FastMCP Server ({transport})...", file=sys.stderr)
         print("[INFO] Multi-tab support enabled", file=sys.stderr)
-        print("[INFO] Waiting for MCP client connection via stdio...", file=sys.stderr)
-        print("[INFO] Connect using an MCP client or press Ctrl+C to stop", file=sys.stderr)
+        
+        if transport == "sse":
+             print(f"[INFO] Listening on SSE transport http://localhost:{port}/sse", file=sys.stderr)
+        else:
+             print("[INFO] Waiting for MCP client connection via stdio...", file=sys.stderr)
+             print("[INFO] Connect using an MCP client or press Ctrl+C to stop", file=sys.stderr)
+             
         try:
             # Run the server directly - session manager will be started lazily
             # print(f"DEBUG: sys.argv: {sys.argv}", file=sys.stderr)
-            self.server.run()
+            import inspect
+            try:
+                with open("debug_fastmcp.log", "w") as f:
+                    f.write(f"DEBUG: FastMCP dir: {dir(self.server)}\n")
+                    try:
+                        f.write(f"DEBUG: FastMCP run sig: {inspect.signature(self.server.run)}\n")
+                    except:
+                        f.write("DEBUG: Could not get signature\n")
+            except Exception as e:
+                pass
+                
+            if transport == "sse":
+                 self.server.run(transport="sse", port=port)
+            else:
+                 self.server.run(transport="stdio")
             
             # If run() returns, it might be because it's non-blocking or finished.
             # We'll add a small keep-alive just in case, but log it.

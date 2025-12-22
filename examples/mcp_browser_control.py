@@ -139,6 +139,8 @@ Options:
   --list-tools        List all available browser control tools
   --start-chrome      Start Chrome with debugging and exit
   --server-only       Start only the MCP server (assumes Chrome is running)
+  --transport=MODE    Transport mode: stdio (default) or sse
+  --port=PORT         Port for SSE transport (default: 8000)
 
 Examples:
   # Start Chrome and run the server
@@ -209,11 +211,32 @@ For AI Agents:
         
         # Remove arguments handled by this script so FastMCP doesn't see them
         # We don't clear sys.argv completely to preserve script name etc.
+        # Remove arguments handled by this script so FastMCP doesn't see them
+        # We don't clear sys.argv completely to preserve script name etc.
         if "--server-only" in sys.argv:
             sys.argv.remove("--server-only")
+            
+        transport = "stdio"
+        port = 8000
+        
+        # Simple manual argument parsing to avoid argparse conflicts with other tools
+        args_to_remove = []
+        for arg in sys.argv:
+            if arg.startswith("--transport="):
+                transport = arg.split("=")[1]
+                args_to_remove.append(arg)
+            elif arg.startswith("--port="):
+                try:
+                    port = int(arg.split("=")[1])
+                    args_to_remove.append(arg)
+                except ValueError:
+                    print(f"[WARN] Invalid port: {arg}, using 8000", file=sys.stderr)
+
+        for arg in args_to_remove:
+            sys.argv.remove(arg)
         
         server = BrowserFastMCPServer()
-        server.run()
+        server.run(transport=transport, port=port)
         
     except KeyboardInterrupt:
         print("\n[STOP] Server stopped by user", file=sys.stderr)
